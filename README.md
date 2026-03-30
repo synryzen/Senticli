@@ -13,6 +13,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Animated digital face with status-driven expressions
 - Loona-inspired companion expression set (happy/sad/angry/confused/sleeping + look-around)
 - Selectable face styles (`Loona`, `Terminal`, `Orb`)
+- Optional camera snapshot analysis (captures a frame with `ffmpeg` and sends it to your vision-capable model)
 - Terminal-style message stream with user/assistant/system bubbles
 - Terminal-native bottom pane with line-based output and CLI prompt styling
 - Terminal niceties: Up/Down command history and ANSI-colored shell output
@@ -67,6 +68,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - `/profile-delete <name>`
   - `/endpoint <url>`
   - `/models-endpoint <url|auto>`
+  - `/camera <on|off|snap>`
   - `/models`
   - `/test`
   - `/cancel`
@@ -142,6 +144,8 @@ sudo apt install -y \
   speech-dispatcher alsa-utils
 ```
 
+For camera snapshot analysis, install `ffmpeg`.
+
 If your distro package names differ, install equivalent Qt 6 Quick + QML + Quick Controls dev/runtime modules.
 
 ## Build and Run
@@ -170,6 +174,8 @@ You can do the same via commands:
 /endpoint 192.168.1.220/v1/chat/completions
 /models-endpoint https://lm.msidragon.com/v1/models
 /apikey your-token-here
+/camera on
+/camera snap
 /models
 /model your-model-id
 /speed instant

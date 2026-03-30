@@ -16,12 +16,15 @@ ApplicationWindow {
         spacing: 0
 
         FaceView {
+            id: facePane
             Layout.fillWidth: true
             Layout.preferredHeight: Math.round(window.height * 0.38)
             faceState: backend.faceState
             statusText: backend.statusText
             micActive: backend.micActive
             voiceInputLevel: backend.voiceInputLevel
+            cameraEnabled: backend.cameraEnabled
+            cameraAnalyzeRunning: backend.cameraAnalyzeRunning
             faceStyle: backend.faceStyle
             mouthBeatMs: backend.mouthBeatMs
             speakingActive: backend.speakingActive
@@ -91,6 +94,8 @@ ApplicationWindow {
             endpoint: backend.endpoint
             modelsEndpoint: backend.modelsEndpoint
             apiKey: backend.apiKey
+            cameraEnabled: backend.cameraEnabled
+            cameraAnalyzeRunning: backend.cameraAnalyzeRunning
             availableModels: backend.availableModels
             selectedModel: backend.selectedModel
             modelStatus: backend.modelStatus
@@ -141,6 +146,12 @@ ApplicationWindow {
             }
             onApiKeySubmitted: function(value) {
                 backend.setApiKey(value)
+            }
+            onCameraEnabledToggled: function(enabled) {
+                backend.setCameraEnabled(enabled)
+            }
+            onAnalyzeCameraRequested: {
+                facePane.captureAndAnalyzeFrame()
             }
             onRefreshRequested: {
                 backend.refreshModels()

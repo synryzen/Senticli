@@ -12,6 +12,8 @@ Rectangle {
     property string endpoint: ""
     property string modelsEndpoint: ""
     property string apiKey: ""
+    property bool cameraEnabled: false
+    property bool cameraAnalyzeRunning: false
     property var availableModels: []
     property string selectedModel: "local-prototype"
     property string modelStatus: ""
@@ -50,6 +52,8 @@ Rectangle {
     signal endpointSubmitted(string endpoint)
     signal modelsEndpointSubmitted(string modelsEndpoint)
     signal apiKeySubmitted(string apiKey)
+    signal cameraEnabledToggled(bool enabled)
+    signal analyzeCameraRequested()
     signal refreshRequested()
     signal testRequested()
     signal modelSelected(string modelName)
@@ -296,6 +300,34 @@ Rectangle {
                                 font.family: Typography.uiFamily
                                 font.pixelSize: Typography.smallSize
                             }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Switch {
+                                id: cameraEnabledSwitch
+                                text: "Camera Access"
+                                checked: root.cameraEnabled
+                                onToggled: root.cameraEnabledToggled(checked)
+                            }
+
+                            Button {
+                                text: "Analyze Current Frame"
+                                enabled: root.cameraEnabled && !root.cameraAnalyzeRunning && !root.streamingActive
+                                onClicked: root.analyzeCameraRequested()
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            Label {
+                                text: root.cameraAnalyzeRunning ? "Analyzing..." : ""
+                                color: Colors.textSecondary
+                                font.family: Typography.monoFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            Item { Layout.fillWidth: true }
                         }
                     }
                 }
@@ -953,6 +985,10 @@ Rectangle {
         apiKeyField.text = apiKey
     }
 
+    onCameraEnabledChanged: {
+        cameraEnabledSwitch.checked = cameraEnabled
+    }
+
     onSelectedModelChanged: {
         const idx = modelCombo.find(selectedModel)
         if (idx >= 0) {
@@ -1050,6 +1086,7 @@ Rectangle {
         endpointField.text = endpoint
         modelsEndpointField.text = modelsEndpoint
         apiKeyField.text = apiKey
+        cameraEnabledSwitch.checked = cameraEnabled
         tokenRateSlider.value = tokenRate
         assistantNameField.text = assistantName
         wakeEnabledSwitch.checked = wakeEnabled

@@ -162,6 +162,16 @@ QString AppController::mode() const
     return m_mode;
 }
 
+bool AppController::cameraEnabled() const
+{
+    return m_cameraEnabled;
+}
+
+bool AppController::cameraAnalyzeRunning() const
+{
+    return m_cameraAnalyzeRunning;
+}
+
 QString AppController::endpoint() const
 {
     return m_endpoint;
@@ -387,7 +397,7 @@ bool AppController::commandRunning() const
 
 bool AppController::actionRunning() const
 {
-    return m_streamingActive || m_commandRunning;
+    return m_streamingActive || m_commandRunning || m_cameraAnalyzeRunning;
 }
 
 bool AppController::pendingApproval() const
@@ -398,6 +408,267 @@ bool AppController::pendingApproval() const
 QString AppController::pendingApprovalText() const
 {
     return m_pendingApprovalText;
+}
+
+void AppController::captureAndAnalyzeCameraFrame()
+{
+    if (!m_cameraEnabled) {
+        postAssistant("Camera is disabled. Enable it in AI Settings first.", "warning");
+        return;
+    }
+
+    if (m_cameraAnalyzeRunning || m_activeVisionReply || m_activeChatReply || m_cameraCaptureProcess) {
+        postAssistant("Model is busy. Wait for the current response to finish.", "warning");
+        return;
+    }
+
+    const QString ffmpeg = QStandardPaths::findExecutable("ffmpeg");
+    if (ffmpeg.isEmpty()) {
+        postAssistant("Camera capture requires ffmpeg. Install ffmpeg and try again.", "warning");
+        return;
+    }
+
+    const QStringList cameraCandidates = {"/dev/video0", "/dev/video1", "/dev/video2"};
+    QString selectedDevice;
+    for (const QString &candidate : cameraCandidates) {
+        if (QFileInfo::exists(candidate)) {
+            selectedDevice = candidate;
+            break;
+        }
+    }
+
+    if (selectedDevice.isEmpty()) {
+        postAssistant("No camera device was found (expected /dev/video0).", "warning");
+        return;
+    }
+
+    const QString tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    const QString framePath = tempDir + QString("/senticli_frame_%1.png")
+                                            .arg(QDateTime::currentMSecsSinceEpoch());
+
+    setFaceState("thinking");
+    setStatusText("Capturing camera frame...");
+    setModelStatus("Capturing frame...");
+    appendAudit("Camera frame capture started");
+    setCameraAnalyzeRunning(true);
+
+    QProcess *capture = new QProcess(this);
+    m_cameraCaptureProcess = capture;
+    capture->setProgram(ffmpeg);
+    capture->setArguments({
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-f",
+        "video4linux2",
+        "-i",
+        selectedDevice,
+        "-frames:v",
+        "1",
+        "-vf",
+        "scale=640:360",
+        framePath,
+    });
+
+    QTimer::singleShot(6000, this, [this, capture]() {
+        if (capture == m_cameraCaptureProcess && capture->state() != QProcess::NotRunning) {
+            appendAudit("Camera capture timed out");
+            capture->kill();
+        }
+    });
+
+    connect(capture, &QProcess::errorOccurred, this, [this, capture](QProcess::ProcessError) {
+        if (capture != m_cameraCaptureProcess) {
+            return;
+        }
+        m_cameraCaptureProcess = nullptr;
+        setCameraAnalyzeRunning(false);
+        setFaceState("warning");
+        setStatusText("Camera capture failed");
+        setModelStatus("Camera capture failed");
+        const QString detail = capture->errorString().trimmed();
+        appendAudit("Camera capture failed: " + (detail.isEmpty() ? QString("unknown error") : detail));
+        postAssistant(
+            "Camera capture failed. "
+                + (detail.isEmpty() ? QString("Unable to access camera device.") : detail),
+            "warning");
+        capture->deleteLater();
+    });
+
+    connect(
+        capture,
+        qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+        this,
+        [this, capture, framePath](int exitCode, QProcess::ExitStatus exitStatus) {
+            if (capture != m_cameraCaptureProcess) {
+                capture->deleteLater();
+                return;
+            }
+
+            m_cameraCaptureProcess = nullptr;
+            const QString stderrText = QString::fromUtf8(capture->readAllStandardError()).trimmed();
+            const bool ok = exitStatus == QProcess::NormalExit && exitCode == 0 && QFileInfo::exists(framePath);
+
+            if (!ok) {
+                setCameraAnalyzeRunning(false);
+                setFaceState("warning");
+                setStatusText("Camera capture failed");
+                setModelStatus("Camera capture failed");
+                const QString detail = stderrText.isEmpty() ? "unknown error" : stderrText;
+                appendAudit("Camera capture failed: " + detail);
+                postAssistant("Camera capture failed. " + detail, "warning");
+                capture->deleteLater();
+                return;
+            }
+
+            setCameraAnalyzeRunning(false);
+            appendAudit("Camera frame capture complete");
+            capture->deleteLater();
+            analyzeCameraFrameFile(framePath);
+        });
+
+    capture->start();
+}
+
+void AppController::analyzeCameraFrameFile(const QString &filePath)
+{
+    QString path = filePath.trimmed();
+    if (path.startsWith("file://")) {
+        path = QUrl(path).toLocalFile();
+    }
+    if (path.isEmpty()) {
+        postAssistant("Camera frame path was empty.", "warning");
+        return;
+    }
+
+    if (!m_cameraEnabled) {
+        postAssistant("Camera is disabled. Enable it in AI Settings first.", "warning");
+        return;
+    }
+
+    if (m_activeVisionReply || m_activeChatReply) {
+        postAssistant("Model is busy. Wait for the current response to finish.", "warning");
+        return;
+    }
+
+    if (!shouldUseRemoteModel()) {
+        postAssistant("Camera analysis requires a remote vision-capable model.", "warning");
+        return;
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        postAssistant("Unable to read the captured camera frame.", "warning");
+        return;
+    }
+    const QByteArray imageBytes = file.readAll();
+    if (imageBytes.isEmpty()) {
+        postAssistant("Captured frame was empty.", "warning");
+        return;
+    }
+
+    const QString completionUrl = normalizedCompletionUrl(m_endpoint);
+    if (completionUrl.isEmpty()) {
+        postAssistant("The configured endpoint is invalid.", "warning");
+        setModelStatus("Invalid endpoint");
+        return;
+    }
+
+    m_messageModel.addMessage("user", "[camera] Analyze current frame", "user");
+    setFaceState("thinking");
+    setStatusText("Analyzing camera frame...");
+    setModelStatus("Sending frame to vision model...");
+    appendAudit("Camera frame analysis started");
+    setCameraAnalyzeRunning(true);
+
+    const QString dataUrl = "data:image/png;base64," + QString::fromLatin1(imageBytes.toBase64());
+
+    QJsonArray messages;
+    messages.append(QJsonObject{
+        {"role", "system"},
+        {"content", "You are a vision companion. Describe what is visible and highlight notable objects, posture, emotion, or gestures. Keep it concise and practical."},
+    });
+
+    QJsonArray content;
+    content.append(QJsonObject{
+        {"type", "text"},
+        {"text", "Analyze this camera frame and respond briefly with what you see."},
+    });
+    content.append(QJsonObject{
+        {"type", "image_url"},
+        {"image_url", QJsonObject{{"url", dataUrl}}},
+    });
+    messages.append(QJsonObject{
+        {"role", "user"},
+        {"content", content},
+    });
+
+    QJsonObject payload;
+    payload.insert("model", m_selectedModel);
+    payload.insert("stream", false);
+    payload.insert("max_tokens", 320);
+    payload.insert("messages", messages);
+
+    QNetworkRequest request{QUrl(completionUrl)};
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    applyAuthHeader(request);
+
+    m_activeVisionReply = m_network.post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    QNetworkReply *reply = m_activeVisionReply;
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        if (reply != m_activeVisionReply) {
+            reply->deleteLater();
+            return;
+        }
+        m_activeVisionReply = nullptr;
+        setCameraAnalyzeRunning(false);
+
+        if (reply->error() != QNetworkReply::NoError) {
+            if (reply->error() == QNetworkReply::OperationCanceledError) {
+                setModelStatus("Camera analysis canceled");
+                appendAudit("Camera analysis canceled");
+                finalizeAssistantState();
+                reply->deleteLater();
+                return;
+            }
+            postAssistant("Camera analysis failed: " + reply->errorString(), "warning");
+            setModelStatus("Camera analysis failed");
+            appendAudit("Camera analysis failed: " + reply->errorString());
+            reply->deleteLater();
+            return;
+        }
+
+        QJsonParseError parseError;
+        const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll(), &parseError);
+        if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+            postAssistant("Camera analysis returned an invalid response.", "warning");
+            setModelStatus("Invalid vision response");
+            appendAudit("Camera analysis invalid response");
+            reply->deleteLater();
+            return;
+        }
+
+        const QJsonArray choices = doc.object().value("choices").toArray();
+        QString answer;
+        if (!choices.isEmpty()) {
+            answer = extractContentFromChoice(choices.first().toObject()).trimmed();
+        }
+
+        if (answer.isEmpty()) {
+            postAssistant("I could not extract a visual description from the model.", "warning");
+            setModelStatus("No vision text returned");
+            appendAudit("Camera analysis empty response");
+            reply->deleteLater();
+            return;
+        }
+
+        postAssistant(answer);
+        setModelStatus("Camera analysis complete");
+        appendAudit("Camera analysis complete");
+        reply->deleteLater();
+    });
 }
 
 void AppController::sendUserInput(const QString &text)
@@ -488,6 +759,19 @@ void AppController::setMode(const QString &mode)
     m_mode = mode;
     emit modeChanged();
     m_messageModel.addMessage("system", QString("Mode set to %1").arg(mode), "system");
+}
+
+void AppController::setCameraEnabled(bool enabled)
+{
+    if (m_cameraEnabled == enabled) {
+        return;
+    }
+
+    m_cameraEnabled = enabled;
+    emit cameraEnabledChanged();
+    setModelStatus(m_cameraEnabled ? "Camera enabled" : "Camera disabled");
+    appendAudit(QString("Camera %1").arg(m_cameraEnabled ? "enabled" : "disabled"));
+    saveSettings();
 }
 
 void AppController::setEndpoint(const QString &endpoint)
@@ -1295,6 +1579,16 @@ void AppController::cancelActiveRequest()
         canceledSomething = true;
     }
 
+    if (m_activeVisionReply) {
+        m_activeVisionReply->abort();
+        canceledSomething = true;
+    }
+
+    if (m_cameraCaptureProcess && m_cameraCaptureProcess->state() != QProcess::NotRunning) {
+        m_cameraCaptureProcess->kill();
+        canceledSomething = true;
+    }
+
     if (!canceledSomething) {
         setModelStatus("Nothing to cancel");
     } else {
@@ -1388,6 +1682,19 @@ void AppController::setMouthBeatMs(int beatMs)
     }
     m_mouthBeatMs = clamped;
     emit mouthBeatMsChanged();
+}
+
+void AppController::setCameraAnalyzeRunning(bool running)
+{
+    if (m_cameraAnalyzeRunning == running) {
+        return;
+    }
+    const bool beforeAction = actionRunning();
+    m_cameraAnalyzeRunning = running;
+    emit cameraAnalyzeRunningChanged();
+    if (beforeAction != actionRunning()) {
+        emit actionRunningChanged();
+    }
 }
 
 void AppController::setStreamingActive(bool active)
@@ -1873,6 +2180,7 @@ void AppController::loadSettings()
     if (!providers().contains(m_provider)) {
         m_provider = "Custom";
     }
+    m_cameraEnabled = settings.value("camera/enabled", m_cameraEnabled).toBool();
 
     m_endpoint = settings.value("ai/endpoint", m_endpoint).toString();
     m_modelsEndpoint = normalizedModelsOverrideUrl(
@@ -1957,6 +2265,7 @@ void AppController::saveSettings() const
     settings.setValue("profiles/names", m_connectionProfiles);
     settings.setValue("profiles/active", m_activeProfile);
     settings.setValue("ai/provider", m_provider);
+    settings.setValue("camera/enabled", m_cameraEnabled);
     settings.setValue("ai/endpoint", m_endpoint);
     settings.setValue("ai/modelsEndpoint", m_modelsEndpoint);
     settings.setValue("ai/apiKey", m_apiKey);
@@ -2127,6 +2436,7 @@ void AppController::handleInput(const QString &text)
             "/endpoint <url>\n"
             "/models-endpoint <url> (optional override)\n"
             "/apikey <token> (or /apikey clear)\n"
+            "/camera on|off|snap\n"
             "/models\n"
             "/model <id>\n"
             "/speed <Instant|Terminal|Balanced|Human|Cinematic>\n"
@@ -2260,6 +2570,24 @@ void AppController::handleInput(const QString &text)
         }
         setApiKey(value);
         postAssistant("API key saved.");
+        return;
+    }
+
+    if (lowered.startsWith("/camera ")) {
+        const QString value = lowered.mid(8).trimmed();
+        if (value == "on") {
+            setCameraEnabled(true);
+            return;
+        }
+        if (value == "off") {
+            setCameraEnabled(false);
+            return;
+        }
+        if (value == "snap" || value == "analyze") {
+            captureAndAnalyzeCameraFrame();
+            return;
+        }
+        postAssistant("Usage: /camera on|off|snap", "warning");
         return;
     }
 
@@ -2759,6 +3087,23 @@ QString AppController::extractContentFromChoice(const QJsonObject &choiceObject)
     const QJsonObject message = choiceObject.value("message").toObject();
     if (message.value("content").isString()) {
         return message.value("content").toString();
+    }
+
+    if (message.value("content").isArray()) {
+        QString collected;
+        const QJsonArray parts = message.value("content").toArray();
+        for (const QJsonValue &part : parts) {
+            const QJsonObject partObject = part.toObject();
+            if (partObject.value("text").isString()) {
+                collected += partObject.value("text").toString();
+            } else if (partObject.value("type").toString() == "text"
+                       && partObject.value("content").isString()) {
+                collected += partObject.value("content").toString();
+            }
+        }
+        if (!collected.isEmpty()) {
+            return collected;
+        }
     }
 
     if (choiceObject.value("text").isString()) {
@@ -3475,6 +3820,7 @@ void AppController::loadProfile(const QString &profileName)
         settings.value(base + "endpoint", m_endpoint).toString());
     const QString profileModelsEndpoint = normalizedModelsOverrideUrl(
         settings.value(base + "modelsEndpoint", m_modelsEndpoint).toString());
+    const bool profileCameraEnabled = settings.value(base + "cameraEnabled", m_cameraEnabled).toBool();
     const QString profileApiKey = settings.value(base + "apiKey", m_apiKey).toString();
     const QString profileModel = settings.value(base + "selectedModel", m_selectedModel).toString().trimmed();
     const QString profileSmoothing = settings.value(base + "smoothingProfile", m_smoothingProfile).toString();
@@ -3510,6 +3856,11 @@ void AppController::loadProfile(const QString &profileName)
     if (m_modelsEndpoint != profileModelsEndpoint) {
         m_modelsEndpoint = profileModelsEndpoint;
         emit modelsEndpointChanged();
+    }
+
+    if (m_cameraEnabled != profileCameraEnabled) {
+        m_cameraEnabled = profileCameraEnabled;
+        emit cameraEnabledChanged();
     }
 
     if (m_apiKey != profileApiKey) {
@@ -3619,6 +3970,7 @@ void AppController::saveProfileToSettings(const QString &profileName) const
     QSettings settings;
     const QString base = QString("profiles/%1/").arg(trimmed);
     settings.setValue(base + "provider", m_provider);
+    settings.setValue(base + "cameraEnabled", m_cameraEnabled);
     settings.setValue(base + "endpoint", m_endpoint);
     settings.setValue(base + "modelsEndpoint", m_modelsEndpoint);
     settings.setValue(base + "apiKey", m_apiKey);

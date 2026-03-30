@@ -8,6 +8,8 @@ Item {
     property string statusText: "Ready"
     property bool micActive: false
     property real voiceInputLevel: 0.0
+    property bool cameraEnabled: false
+    property bool cameraAnalyzeRunning: false
     property string faceStyle: "Loona"
     property int mouthBeatMs: 180
     property bool speakingActive: false
@@ -53,6 +55,15 @@ Item {
         }
     }
 
+    function captureAndAnalyzeFrame() {
+        if (!cameraEnabled || cameraAnalyzeRunning) {
+            return
+        }
+        if (typeof backend !== "undefined" && backend.captureAndAnalyzeCameraFrame) {
+            backend.captureAndAnalyzeCameraFrame()
+        }
+    }
+
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
@@ -78,6 +89,77 @@ Item {
             running: true
             NumberAnimation { from: 0.97; to: 1.035; duration: root.isSpeaking ? 520 : 880; easing.type: Easing.InOutQuad }
             NumberAnimation { from: 1.035; to: 0.97; duration: root.isSpeaking ? 520 : 880; easing.type: Easing.InOutQuad }
+        }
+    }
+
+    Rectangle {
+        id: cameraPanel
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: 10
+        anchors.rightMargin: 10
+        width: 252
+        height: 154
+        radius: 10
+        color: "#0A1016"
+        border.width: 1
+        border.color: cameraEnabled ? root.expressionAccent : "#2C3640"
+        visible: true
+        opacity: cameraEnabled ? 0.96 : 0.55
+
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 6
+            radius: 8
+            color: "#111720"
+
+            Column {
+                anchors.centerIn: parent
+                spacing: 6
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: root.cameraEnabled ? "Camera Ready" : "Camera Off"
+                    color: Colors.textSecondary
+                    font.family: Typography.monoFamily
+                    font.pixelSize: Typography.smallSize
+                }
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: root.cameraEnabled ? "Click to capture + analyze" : "Enable camera in AI Settings"
+                    color: "#6E8295"
+                    font.family: Typography.monoFamily
+                    font.pixelSize: 11
+                }
+            }
+        }
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: 8
+            anchors.bottomMargin: 8
+            radius: 7
+            color: "#111722"
+            opacity: 0.9
+            width: camLabel.implicitWidth + 14
+            height: 22
+
+            Text {
+                id: camLabel
+                anchors.centerIn: parent
+                text: root.cameraAnalyzeRunning ? "Analyzing..." : "Camera"
+                color: Colors.textSecondary
+                font.family: Typography.monoFamily
+                font.pixelSize: 11
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            enabled: root.cameraEnabled && !root.cameraAnalyzeRunning
+            onClicked: root.captureAndAnalyzeFrame()
         }
     }
 
@@ -174,7 +256,7 @@ Item {
             height: 12
             radius: 8
             color: root.isHappy ? "#6AE6B1" : (root.isWarning ? "#F1A08D" : "#FFFFFF")
-        opacity: root.isHappy ? 0.22 : (root.isWarning ? 0.18 : 0.0)
+            opacity: root.isHappy ? 0.22 : (root.isWarning ? 0.18 : 0.0)
             anchors.left: parent.left
             anchors.leftMargin: 112
             anchors.bottom: parent.bottom
@@ -186,7 +268,7 @@ Item {
             height: 12
             radius: 8
             color: root.isHappy ? "#6AE6B1" : (root.isWarning ? "#F1A08D" : "#FFFFFF")
-        opacity: root.isHappy ? 0.22 : (root.isWarning ? 0.18 : 0.0)
+            opacity: root.isHappy ? 0.22 : (root.isWarning ? 0.18 : 0.0)
             anchors.right: parent.right
             anchors.rightMargin: 112
             anchors.bottom: parent.bottom

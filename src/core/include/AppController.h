@@ -22,6 +22,8 @@ class AppController : public QObject
     Q_PROPERTY(QString faceState READ faceState NOTIFY faceStateChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
     Q_PROPERTY(QString mode READ mode NOTIFY modeChanged)
+    Q_PROPERTY(bool cameraEnabled READ cameraEnabled WRITE setCameraEnabled NOTIFY cameraEnabledChanged)
+    Q_PROPERTY(bool cameraAnalyzeRunning READ cameraAnalyzeRunning NOTIFY cameraAnalyzeRunningChanged)
     Q_PROPERTY(QString endpoint READ endpoint WRITE setEndpoint NOTIFY endpointChanged)
     Q_PROPERTY(QString modelsEndpoint READ modelsEndpoint WRITE setModelsEndpoint NOTIFY modelsEndpointChanged)
     Q_PROPERTY(QString apiKey READ apiKey WRITE setApiKey NOTIFY apiKeyChanged)
@@ -77,6 +79,8 @@ public:
     QString faceState() const;
     QString statusText() const;
     QString mode() const;
+    bool cameraEnabled() const;
+    bool cameraAnalyzeRunning() const;
     QString endpoint() const;
     QString modelsEndpoint() const;
     QString apiKey() const;
@@ -124,10 +128,13 @@ public:
     bool actionRunning() const;
     bool pendingApproval() const;
     QString pendingApprovalText() const;
+    Q_INVOKABLE void analyzeCameraFrameFile(const QString &filePath);
+    Q_INVOKABLE void captureAndAnalyzeCameraFrame();
 
     Q_INVOKABLE void sendUserInput(const QString &text);
     Q_INVOKABLE void toggleMic();
     Q_INVOKABLE void setMode(const QString &mode);
+    Q_INVOKABLE void setCameraEnabled(bool enabled);
     Q_INVOKABLE void setEndpoint(const QString &endpoint);
     Q_INVOKABLE void setModelsEndpoint(const QString &modelsEndpoint);
     Q_INVOKABLE void setApiKey(const QString &apiKey);
@@ -166,6 +173,8 @@ signals:
     void faceStateChanged();
     void statusTextChanged();
     void modeChanged();
+    void cameraEnabledChanged();
+    void cameraAnalyzeRunningChanged();
     void endpointChanged();
     void modelsEndpointChanged();
     void apiKeyChanged();
@@ -212,6 +221,7 @@ private:
     void setModelStatus(const QString &text);
     void setVoiceInputLevel(qreal level);
     void setMouthBeatMs(int beatMs);
+    void setCameraAnalyzeRunning(bool running);
     void setStreamingActive(bool active);
     void updateStreamingMessageDisplay(bool showCursor);
     void queueStreamText(const QString &text);
@@ -287,6 +297,7 @@ private:
     QString m_faceState = "idle";
     QString m_statusText = "Ready";
     QString m_mode = "Assist";
+    bool m_cameraEnabled = false;
     QString m_provider = "Custom";
     QString m_endpoint = "http://127.0.0.1:1234/v1/chat/completions";
     QString m_modelsEndpoint;
@@ -328,6 +339,7 @@ private:
     bool m_streamingActive = false;
     bool m_commandRunning = false;
     bool m_pendingApproval = false;
+    bool m_cameraAnalyzeRunning = false;
     QString m_pendingApprovalText;
     QString m_pendingActionKind;
     QString m_pendingPayload;
@@ -336,6 +348,8 @@ private:
     QPointer<QNetworkReply> m_activeModelsReply;
     QPointer<QNetworkReply> m_activeHealthReply;
     QPointer<QNetworkReply> m_activeTranscriptionReply;
+    QPointer<QNetworkReply> m_activeVisionReply;
+    QPointer<QProcess> m_cameraCaptureProcess;
     QByteArray m_chatStreamBuffer;
     QByteArray m_chatRawBuffer;
     QString m_streamAccumulatedText;
