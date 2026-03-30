@@ -8,6 +8,7 @@ Rectangle {
     property string provider: "Custom"
     property var providers: ["Custom", "LM Studio", "Ollama"]
     property string endpoint: ""
+    property string apiKey: ""
     property var availableModels: []
     property string selectedModel: "local-prototype"
     property bool ttsEnabled: false
@@ -15,6 +16,7 @@ Rectangle {
 
     signal providerSelected(string provider)
     signal endpointSubmitted(string endpoint)
+    signal apiKeySubmitted(string apiKey)
     signal refreshRequested()
     signal testRequested()
     signal modelSelected(string modelName)
@@ -70,6 +72,25 @@ Rectangle {
             Button {
                 text: "Set"
                 onClicked: root.endpointSubmitted(endpointField.text)
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+
+            TextField {
+                id: apiKeyField
+                Layout.fillWidth: true
+                placeholderText: "Optional API key / bearer token"
+                echoMode: TextInput.Password
+                text: root.apiKey
+                font.family: Typography.monoFamily
+                onAccepted: root.apiKeySubmitted(text)
+            }
+
+            Button {
+                text: "Save Key"
+                onClicked: root.apiKeySubmitted(apiKeyField.text)
             }
         }
 
@@ -145,6 +166,10 @@ Rectangle {
         endpointField.text = endpoint
     }
 
+    onApiKeyChanged: {
+        apiKeyField.text = apiKey
+    }
+
     onSelectedModelChanged: {
         const idx = modelCombo.find(selectedModel)
         if (idx >= 0) {
@@ -165,6 +190,7 @@ Rectangle {
         if (idx >= 0) {
             providerCombo.currentIndex = idx
         }
+        apiKeyField.text = apiKey
         idx = modelCombo.find(selectedModel)
         if (idx >= 0) {
             modelCombo.currentIndex = idx

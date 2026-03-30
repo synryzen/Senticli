@@ -8,6 +8,7 @@ Rectangle {
     property string provider: "Custom"
     property var providers: ["Custom", "LM Studio", "Ollama"]
     property string endpoint: ""
+    property string apiKey: ""
     property var availableModels: []
     property string selectedModel: "local-prototype"
     property string modelStatus: ""
@@ -23,6 +24,7 @@ Rectangle {
 
     signal providerSelected(string provider)
     signal endpointSubmitted(string endpoint)
+    signal apiKeySubmitted(string apiKey)
     signal refreshRequested()
     signal testRequested()
     signal modelSelected(string modelName)
@@ -139,6 +141,37 @@ Rectangle {
                                 font.pixelSize: Typography.smallSize
                             }
                         }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            TextField {
+                                id: apiKeyField
+                                Layout.fillWidth: true
+                                placeholderText: "Optional API key / bearer token"
+                                font.family: Typography.monoFamily
+                                font.pixelSize: Typography.smallSize
+                                echoMode: TextInput.Password
+                                onAccepted: root.apiKeySubmitted(text)
+                            }
+
+                            Button {
+                                text: "Save Key"
+                                onClicked: root.apiKeySubmitted(apiKeyField.text)
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            Button {
+                                text: "Clear"
+                                onClicked: {
+                                    apiKeyField.text = ""
+                                    root.apiKeySubmitted("")
+                                }
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+                        }
                     }
                 }
 
@@ -186,8 +219,42 @@ Rectangle {
                             Button {
                                 text: "Use"
                                 onClicked: {
-                                    if (modelCombo.currentText.length > 0) {
+                                    if (manualModelField.text.trim().length > 0) {
+                                        root.modelSelected(manualModelField.text.trim())
+                                    } else if (modelCombo.currentText.length > 0) {
                                         root.modelSelected(modelCombo.currentText)
+                                    }
+                                }
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            TextField {
+                                id: manualModelField
+                                Layout.fillWidth: true
+                                placeholderText: "Type model id manually (example: qwen2.5-coder:14b)"
+                                font.family: Typography.monoFamily
+                                font.pixelSize: Typography.smallSize
+                                onAccepted: {
+                                    const value = text.trim()
+                                    if (value.length > 0) {
+                                        root.modelSelected(value)
+                                        clear()
+                                    }
+                                }
+                            }
+
+                            Button {
+                                text: "Set Typed Model"
+                                onClicked: {
+                                    const value = manualModelField.text.trim()
+                                    if (value.length > 0) {
+                                        root.modelSelected(value)
+                                        manualModelField.clear()
                                     }
                                 }
                                 font.family: Typography.uiFamily
@@ -442,6 +509,10 @@ Rectangle {
         endpointField.text = endpoint
     }
 
+    onApiKeyChanged: {
+        apiKeyField.text = apiKey
+    }
+
     onSelectedModelChanged: {
         const idx = modelCombo.find(selectedModel)
         if (idx >= 0) {
@@ -470,6 +541,7 @@ Rectangle {
 
     Component.onCompleted: {
         endpointField.text = endpoint
+        apiKeyField.text = apiKey
         tokenRateSlider.value = tokenRate
         ttsSwitch.checked = ttsEnabled
         memorySwitch.checked = memoryEnabled

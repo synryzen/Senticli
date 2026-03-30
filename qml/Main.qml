@@ -83,6 +83,7 @@ ApplicationWindow {
             provider: backend.provider
             providers: backend.providers
             endpoint: backend.endpoint
+            apiKey: backend.apiKey
             availableModels: backend.availableModels
             selectedModel: backend.selectedModel
             modelStatus: backend.modelStatus
@@ -100,6 +101,9 @@ ApplicationWindow {
             }
             onEndpointSubmitted: function(value) {
                 backend.setEndpoint(value)
+            }
+            onApiKeySubmitted: function(value) {
+                backend.setApiKey(value)
             }
             onRefreshRequested: {
                 backend.refreshModels()
@@ -161,6 +165,7 @@ ApplicationWindow {
             provider: backend.provider
             providers: backend.providers
             endpoint: backend.endpoint
+            apiKey: backend.apiKey
             availableModels: backend.availableModels
             selectedModel: backend.selectedModel
             ttsEnabled: backend.ttsEnabled
@@ -170,6 +175,9 @@ ApplicationWindow {
             }
             onEndpointSubmitted: function(value) {
                 backend.setEndpoint(value)
+            }
+            onApiKeySubmitted: function(value) {
+                backend.setApiKey(value)
             }
             onRefreshRequested: {
                 backend.refreshModels()

@@ -103,6 +103,11 @@ QString AppController::endpoint() const
     return m_endpoint;
 }
 
+QString AppController::apiKey() const
+{
+    return m_apiKey;
+}
+
 QString AppController::provider() const
 {
     return m_provider;
@@ -289,6 +294,20 @@ void AppController::setEndpoint(const QString &endpoint)
     saveSettings();
 }
 
+void AppController::setApiKey(const QString &apiKey)
+{
+    const QString trimmed = apiKey.trimmed();
+    if (m_apiKey == trimmed) {
+        return;
+    }
+
+    m_apiKey = trimmed;
+    emit apiKeyChanged();
+    setModelStatus(m_apiKey.isEmpty() ? "API key cleared" : "API key updated");
+    appendAudit(m_apiKey.isEmpty() ? "API key cleared" : "API key updated");
+    saveSettings();
+}
+
 void AppController::setProvider(const QString &provider)
 {
     const QString trimmed = provider.trimmed();
@@ -409,6 +428,7 @@ void AppController::refreshModels()
 
     QNetworkRequest request{QUrl(modelsUrl)};
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    applyAuthHeader(request);
 
     setModelStatus("Loading models...");
     m_activeModelsReply = m_network.get(request);
@@ -438,9 +458,24 @@ void AppController::refreshModels()
         }
 
         QStringList newModels = {"local-prototype"};
-        const QJsonArray data = doc.object().value("data").toArray();
+        const QJsonObject root = doc.object();
+
+        QJsonArray data = root.value("data").toArray();
+        if (data.isEmpty() && root.value("models").isArray()) {
+            data = root.value("models").toArray();
+        }
+
         for (const QJsonValue &value : data) {
-            const QString id = value.toObject().value("id").toString().trimmed();
+            QString id;
+            if (value.isObject()) {
+                id = value.toObject().value("id").toString().trimmed();
+                if (id.isEmpty()) {
+                    id = value.toObject().value("name").toString().trimmed();
+                }
+            } else if (value.isString()) {
+                id = value.toString().trimmed();
+            }
+
             if (!id.isEmpty() && !newModels.contains(id)) {
                 newModels.append(id);
             }
@@ -480,6 +515,7 @@ void AppController::testProviderConnection()
 
     QNetworkRequest request{QUrl(modelsUrl)};
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    applyAuthHeader(request);
 
     setModelStatus("Testing connection...");
     m_activeHealthReply = m_network.get(request);
@@ -930,6 +966,7 @@ void AppController::loadSettings()
     }
 
     m_endpoint = settings.value("ai/endpoint", m_endpoint).toString();
+    m_apiKey = settings.value("ai/apiKey", m_apiKey).toString();
     m_selectedModel = settings.value("ai/selectedModel", m_selectedModel).toString();
     m_availableModels = settings.value("ai/availableModels", QStringList{"local-prototype"}).toStringList();
     if (m_availableModels.isEmpty()) {
@@ -960,6 +997,7 @@ void AppController::saveSettings() const
     QSettings settings;
     settings.setValue("ai/provider", m_provider);
     settings.setValue("ai/endpoint", m_endpoint);
+    settings.setValue("ai/apiKey", m_apiKey);
     settings.setValue("ai/selectedModel", m_selectedModel);
     settings.setValue("ai/availableModels", m_availableModels);
     settings.setValue("ai/smoothingProfile", m_smoothingProfile);
@@ -1108,6 +1146,7 @@ void AppController::handleInput(const QString &text)
             "Commands:\n"
             "/provider <Custom|LM Studio|Ollama>\n"
             "/endpoint <url>\n"
+            "/apikey <token> (or /apikey clear)\n"
             "/models\n"
             "/model <id>\n"
             "/test\n"
@@ -1174,6 +1213,18 @@ void AppController::handleInput(const QString &text)
 
     if (lowered.startsWith("/endpoint ")) {
         setEndpoint(text.mid(10).trimmed());
+        return;
+    }
+
+    if (lowered.startsWith("/apikey ")) {
+        const QString value = text.mid(8).trimmed();
+        if (value.toLower() == "clear") {
+            setApiKey("");
+            postAssistant("API key cleared.");
+            return;
+        }
+        setApiKey(value);
+        postAssistant("API key saved.");
         return;
     }
 
@@ -1316,6 +1367,7 @@ void AppController::requestRemoteCompletion(const QString &text)
 
     QNetworkRequest request{QUrl(completionUrl)};
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    applyAuthHeader(request);
 
     QJsonArray messages;
     messages.append(QJsonObject{
@@ -1630,6 +1682,16 @@ QString AppController::modelsUrlFromEndpoint(const QString &endpoint) const
     url.setQuery(QString());
     url.setFragment(QString());
     return url.toString();
+}
+
+void AppController::applyAuthHeader(QNetworkRequest &request) const
+{
+    if (m_apiKey.trimmed().isEmpty()) {
+        return;
+    }
+
+    const QByteArray bearer = "Bearer " + m_apiKey.trimmed().toUtf8();
+    request.setRawHeader("Authorization", bearer);
 }
 
 int AppController::chunkSizeForBacklog(int backlog) const

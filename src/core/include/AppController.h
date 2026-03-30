@@ -22,6 +22,7 @@ class AppController : public QObject
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
     Q_PROPERTY(QString mode READ mode NOTIFY modeChanged)
     Q_PROPERTY(QString endpoint READ endpoint WRITE setEndpoint NOTIFY endpointChanged)
+    Q_PROPERTY(QString apiKey READ apiKey WRITE setApiKey NOTIFY apiKeyChanged)
     Q_PROPERTY(QString provider READ provider WRITE setProvider NOTIFY providerChanged)
     Q_PROPERTY(QStringList providers READ providers CONSTANT)
     Q_PROPERTY(QStringList availableModels READ availableModels NOTIFY availableModelsChanged)
@@ -53,6 +54,7 @@ public:
     QString statusText() const;
     QString mode() const;
     QString endpoint() const;
+    QString apiKey() const;
     QString provider() const;
     QStringList providers() const;
     QStringList availableModels() const;
@@ -80,6 +82,7 @@ public:
     Q_INVOKABLE void toggleMic();
     Q_INVOKABLE void setMode(const QString &mode);
     Q_INVOKABLE void setEndpoint(const QString &endpoint);
+    Q_INVOKABLE void setApiKey(const QString &apiKey);
     Q_INVOKABLE void setProvider(const QString &provider);
     Q_INVOKABLE void setSelectedModel(const QString &model);
     Q_INVOKABLE void setSmoothingProfile(const QString &profile);
@@ -100,6 +103,7 @@ signals:
     void statusTextChanged();
     void modeChanged();
     void endpointChanged();
+    void apiKeyChanged();
     void providerChanged();
     void availableModelsChanged();
     void selectedModelChanged();
@@ -159,6 +163,7 @@ private:
     void runShellCommandPreview(const QString &command, bool approved);
     QString normalizedCompletionUrl(const QString &endpoint) const;
     QString modelsUrlFromEndpoint(const QString &endpoint) const;
+    void applyAuthHeader(QNetworkRequest &request) const;
     int chunkSizeForBacklog(int backlog) const;
     int flushIntervalForProfile() const;
     bool shouldUseRemoteModel() const;
@@ -170,6 +175,7 @@ private:
     QString m_mode = "Assist";
     QString m_provider = "Custom";
     QString m_endpoint = "http://127.0.0.1:1234/v1/chat/completions";
+    QString m_apiKey;
     QStringList m_availableModels = {"local-prototype"};
     QString m_selectedModel = "local-prototype";
     QString m_modelStatus = "Prototype mode (local rules)";

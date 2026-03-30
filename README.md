@@ -14,6 +14,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Terminal-style message stream with user/assistant/system bubbles
 - Mode strip (`Chat`, `Assist`, `Command`)
 - OpenAI-compatible model endpoint support (example: `192.168.1.220/v1/chat/completions`)
+- Cloudflare/custom endpoint friendly auth via optional bearer API key
 - Provider presets for `Custom`, `LM Studio`, and `Ollama`
 - Connection health check (`/v1/models` test)
 - Model discovery from `/v1/models` and selectable model list in UI
@@ -22,7 +23,9 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Adaptive stream smoothing to reduce bursty chunk jumps
 - Dedicated AI Settings panel with:
   - provider + endpoint controls
+  - optional API key field
   - model picker + refresh
+  - manual model ID entry (type and set any model name)
   - smoothing + token-rate controls
   - voice and memory toggles
   - granted folder permissions manager
@@ -108,14 +111,17 @@ cmake --build build
 
 1. Click `AI Settings`
 2. Set endpoint to something like `192.168.1.220/v1/chat/completions`
-3. Click `Refresh`, pick a model, then click `Use`
-4. Pick smoothing profile (`Cinematic`, `Human`, `Balanced`, or `Terminal`)
-5. Send a normal message (non-slash command) to route it to that model
+3. If needed, set API key in AI Settings
+4. Click `Refresh`, pick a model, then click `Use`
+5. If your model does not appear, type the exact model ID and click `Set Typed Model`
+6. Pick smoothing profile (`Cinematic`, `Human`, `Balanced`, or `Terminal`)
+7. Send a normal message (non-slash command) to route it to that model
 
 You can do the same via commands:
 
 ```bash
 /endpoint 192.168.1.220/v1/chat/completions
+/apikey your-token-here
 /models
 /model your-model-id
 ```
