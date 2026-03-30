@@ -13,7 +13,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Animated digital face with status-driven expressions
 - Loona-inspired companion expression set (happy/sad/angry/confused/sleeping + look-around)
 - Emote-only mouth behavior (hidden by default, shown for big smile/kiss/frown/grimace moments)
-- Selectable face styles (`Loona`, `Terminal`, `Orb`)
+- Selectable face styles (`Loona`, `Terminal`, `Orb`, `Nova`, `Pixel`)
 - Expression intensity control (`Subtle`, `Normal`, `Dramatic`) with sentiment-driven reactions
 - Optional camera snapshot analysis (captures a frame with `ffmpeg` and sends it to your vision-capable model)
 - Terminal-style message stream with user/assistant/system bubbles
@@ -29,6 +29,8 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Typing cursor during stream and cancel button for in-flight responses
 - Adaptive stream smoothing to reduce bursty chunk jumps
 - `Instant` stream mode for lowest-latency output on powerful hardware
+- Fast response mode with adaptive stream acceleration for slower first-token situations
+- Live latency profiler (first token, response completion, and TTS timing)
 - Sentence-level streaming TTS with barge-in interrupt for smoother conversation flow
 - Duplex voice beta (continuous mic chunks + STT endpoint + wake phrase routing)
 - Echo suppression in duplex mode to avoid self-transcription while speaking
@@ -45,7 +47,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - optional API key field
   - model picker + refresh
   - manual model ID entry (type and set any model name)
-  - speed mode + token-rate controls
+  - speed mode + fast response toggle + token-rate controls
   - companion name setting
   - wake phrase enable/disable
   - editable wake responses
@@ -55,9 +57,10 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - STT endpoint + STT model controls
   - personality preset selector
   - expression intensity selector
-  - voice gender + voice style selectors
+  - voice gender + expanded voice style selectors
   - voice engine selector (`Auto`, `Speech Dispatcher`, `eSpeak`, `Piper`)
   - optional Piper model path
+  - auto-discovered Piper voice model picker (real local human-like voices)
   - one-click voice test button
   - voice and memory toggles
   - granted folder permissions manager
@@ -81,6 +84,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - `/cancel`
   - `/model <id>`
   - `/speed <Instant|Terminal|Balanced|Human|Cinematic>`
+  - `/fast <on|off>`
   - `/lip-sync <0-1100>`
   - `/name <assistant-name>`
   - `/wake <on|off>`
@@ -92,12 +96,14 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - `/stt-endpoint <url|auto>`
   - `/stt-model <id>`
   - `/personality <Helpful|Professional|Witty|Teacher|Hacker|Calm>`
-  - `/face-style <Loona|Terminal|Orb>`
+  - `/face-style <Loona|Terminal|Orb|Nova|Pixel>`
   - `/expression <Subtle|Normal|Dramatic>`
   - `/gender <Neutral|Male|Female>`
-  - `/voice-style <Default|Soft|Bright|Narrator>`
+  - `/voice-style <Default|Soft|Bright|Narrator|Human Female|Human Male|Studio>`
   - `/voice-engine <Auto|Speech Dispatcher|eSpeak|Piper>`
   - `/piper-model <path|clear>`
+  - `/voices-refresh`
+  - `/voice-model <path>`
   - `/voice-test`
   - `/voices`
   - `/grant <folder>`
@@ -193,6 +199,7 @@ You can do the same via commands:
 /models
 /model your-model-id
 /speed instant
+/fast on
 /lip-sync 420
 /name Nova
 /wake on
@@ -206,9 +213,10 @@ You can do the same via commands:
 /personality teacher
 /expression dramatic
 /gender female
-/voice-style narrator
+/voice-style human female
 /voice-engine Piper
 /piper-model /home/you/models/en_US-lessac-medium.onnx
+/voices-refresh
 /voice-test
 /profile-save my-cloudflare-route
 ```

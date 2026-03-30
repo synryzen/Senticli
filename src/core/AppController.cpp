@@ -1,7 +1,9 @@
 #include "AppController.h"
 
+#include <algorithm>
 #include <QDateTime>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QHttpMultiPart>
@@ -35,6 +37,17 @@ QString shellQuote(const QString &value)
     escaped.replace("'", "'\"'\"'");
     return "'" + escaped + "'";
 }
+
+QString formatDurationMs(qint64 valueMs)
+{
+    if (valueMs <= 0) {
+        return "n/a";
+    }
+    if (valueMs >= 10000) {
+        return QString::number(static_cast<double>(valueMs) / 1000.0, 'f', 1) + "s";
+    }
+    return QString::number(valueMs) + "ms";
+}
 } // namespace
 
 AppController::AppController(QObject *parent)
@@ -67,6 +80,11 @@ AppController::AppController(QObject *parent)
     connect(&m_ttsProcess, &QProcess::started, this, [this]() {
         appendAudit("TTS started");
         m_ttsQueueRunning = true;
+        if (m_ttsStartMs < 0) {
+            m_ttsStartMs = m_runtimeClock.elapsed();
+            m_ttsEndMs = -1;
+            updateLatencySummary();
+        }
         m_echoSuppressUntilMs = m_runtimeClock.elapsed() + echoSuppressStartMs();
         const QString expression = m_speakingExpression;
         int startLeadMs = m_lipSyncDelayMs;
@@ -90,6 +108,10 @@ AppController::AppController(QObject *parent)
         if (!m_ttsQueue.isEmpty()) {
             startNextTtsChunk();
             return;
+        }
+        if (m_ttsStartMs > 0) {
+            m_ttsEndMs = m_runtimeClock.elapsed();
+            updateLatencySummary();
         }
         setSpeakingActive(false);
         if (m_waitingForTtsDrain) {
@@ -125,6 +147,7 @@ AppController::AppController(QObject *parent)
 
     loadSettings();
     m_streamFlushTimer.setInterval(flushIntervalForProfile());
+    updateLatencySummary();
     loadAuditEntries();
     loadProjectMemory();
 
@@ -232,6 +255,16 @@ QString AppController::modelStatus() const
     return m_modelStatus;
 }
 
+QString AppController::latencySummary() const
+{
+    return m_latencySummary;
+}
+
+bool AppController::fastResponseMode() const
+{
+    return m_fastResponseMode;
+}
+
 QString AppController::smoothingProfile() const
 {
     return m_smoothingProfile;
@@ -319,7 +352,7 @@ QString AppController::faceStyle() const
 
 QStringList AppController::faceStyles() const
 {
-    return {"Loona", "Terminal", "Orb"};
+    return {"Loona", "Terminal", "Orb", "Nova", "Pixel"};
 }
 
 QString AppController::expressionIntensity() const
@@ -349,7 +382,7 @@ QString AppController::voiceStyle() const
 
 QStringList AppController::voiceStyles() const
 {
-    return {"Default", "Soft", "Bright", "Narrator"};
+    return {"Default", "Soft", "Bright", "Narrator", "Human Female", "Human Male", "Studio"};
 }
 
 QString AppController::voiceEngine() const
@@ -365,6 +398,16 @@ QStringList AppController::voiceEngines() const
 QString AppController::piperModelPath() const
 {
     return m_piperModelPath;
+}
+
+QStringList AppController::availableVoiceModels() const
+{
+    return m_availableVoiceModels;
+}
+
+QString AppController::selectedVoiceModel() const
+{
+    return m_selectedVoiceModel;
 }
 
 bool AppController::ttsEnabled() const
@@ -930,6 +973,23 @@ void AppController::setSelectedModel(const QString &model)
     saveSettings();
 }
 
+void AppController::setFastResponseMode(bool enabled)
+{
+    if (m_fastResponseMode == enabled) {
+        return;
+    }
+
+    m_fastResponseMode = enabled;
+    emit fastResponseModeChanged();
+    setModelStatus(m_fastResponseMode ? "Fast response mode enabled" : "Fast response mode disabled");
+    updateLatencySummary();
+    appendAudit(QString("Fast response mode %1").arg(m_fastResponseMode ? "enabled" : "disabled"));
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
 void AppController::setActiveProfile(const QString &profileName)
 {
     const QString trimmed = profileName.trimmed();
@@ -1437,6 +1497,9 @@ void AppController::setVoiceEngine(const QString &voiceEngine)
     m_voiceEngine = resolved;
     m_ttsBinary.clear();
     emit voiceEngineChanged();
+    if (m_voiceEngine == "Piper" && m_availableVoiceModels.isEmpty()) {
+        refreshVoiceModels();
+    }
     setModelStatus(QString("Voice engine: %1").arg(m_voiceEngine));
     appendAudit("Voice engine set: " + m_voiceEngine);
     if (!m_activeProfile.isEmpty()) {
@@ -1454,6 +1517,11 @@ void AppController::setPiperModelPath(const QString &path)
 
     m_piperModelPath = normalized;
     emit piperModelPathChanged();
+    const QString normalizedCurrent = expandPath(m_piperModelPath);
+    if (m_selectedVoiceModel != normalizedCurrent) {
+        m_selectedVoiceModel = normalizedCurrent;
+        emit selectedVoiceModelChanged();
+    }
     if (m_piperModelPath.isEmpty()) {
         setModelStatus("Piper model path cleared");
         appendAudit("Piper model path cleared");
@@ -1465,6 +1533,79 @@ void AppController::setPiperModelPath(const QString &path)
         saveProfileToSettings(m_activeProfile);
     }
     saveSettings();
+}
+
+void AppController::refreshVoiceModels()
+{
+    QStringList roots;
+    roots << QDir::cleanPath(QDir::homePath() + "/.local/share/piper")
+          << QDir::cleanPath(QDir::homePath() + "/.local/share/piper/voices")
+          << QDir::cleanPath(QDir::homePath() + "/piper")
+          << QDir::cleanPath(QDir::homePath() + "/models")
+          << "/usr/share/piper"
+          << "/usr/share/piper/voices"
+          << "/opt/piper/voices";
+
+    QStringList discovered;
+    for (const QString &root : roots) {
+        QDir dir(root);
+        if (!dir.exists()) {
+            continue;
+        }
+
+        QDirIterator it(
+            root,
+            QStringList{"*.onnx"},
+            QDir::Files | QDir::Readable,
+            QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString candidate = QDir::cleanPath(it.next());
+            if (!discovered.contains(candidate)) {
+                discovered.append(candidate);
+            }
+            if (discovered.size() >= 400) {
+                break;
+            }
+        }
+        if (discovered.size() >= 400) {
+            break;
+        }
+    }
+
+    std::sort(discovered.begin(), discovered.end(), [](const QString &a, const QString &b) {
+        return a.toLower() < b.toLower();
+    });
+
+    if (m_availableVoiceModels != discovered) {
+        m_availableVoiceModels = discovered;
+        emit availableVoiceModelsChanged();
+    }
+
+    const QString normalizedCurrent = expandPath(m_piperModelPath);
+    if (m_selectedVoiceModel != normalizedCurrent) {
+        m_selectedVoiceModel = normalizedCurrent;
+        emit selectedVoiceModelChanged();
+    }
+}
+
+void AppController::setSelectedVoiceModel(const QString &modelPath)
+{
+    const QString normalized = expandPath(modelPath.trimmed());
+    if (normalized.isEmpty()) {
+        return;
+    }
+    if (!QFileInfo::exists(normalized)) {
+        setModelStatus("Voice model file not found");
+        return;
+    }
+
+    setVoiceEngine("Piper");
+    setPiperModelPath(normalized);
+
+    const QString inferred = inferGenderFromVoiceModel(normalized);
+    if (!inferred.isEmpty() && inferred != m_gender) {
+        setGender(inferred);
+    }
 }
 
 void AppController::setTtsEnabled(bool enabled)
@@ -1824,6 +1965,38 @@ void AppController::setModelStatus(const QString &text)
     emit modelStatusChanged();
 }
 
+void AppController::setLatencySummary(const QString &summary)
+{
+    if (m_latencySummary == summary) {
+        return;
+    }
+    m_latencySummary = summary;
+    emit latencySummaryChanged();
+}
+
+void AppController::updateLatencySummary()
+{
+    const qint64 ftMs = (m_requestStartMs >= 0 && m_firstTokenMs >= m_requestStartMs)
+        ? (m_firstTokenMs - m_requestStartMs)
+        : -1;
+    const qint64 doneMs = (m_requestStartMs >= 0 && m_responseDoneMs >= m_requestStartMs)
+        ? (m_responseDoneMs - m_requestStartMs)
+        : -1;
+    const qint64 ttsMs = (m_ttsStartMs >= 0 && m_ttsEndMs >= m_ttsStartMs)
+        ? (m_ttsEndMs - m_ttsStartMs)
+        : -1;
+
+    QString summary = QString("Latency FT %1 | Done %2")
+                          .arg(formatDurationMs(ftMs), formatDurationMs(doneMs));
+    if (m_ttsEnabled || ttsMs > 0) {
+        summary += QString(" | TTS %1").arg(formatDurationMs(ttsMs));
+    }
+    if (m_fastResponseMode) {
+        summary += " | Fast";
+    }
+    setLatencySummary(summary);
+}
+
 void AppController::setVoiceInputLevel(qreal level)
 {
     const qreal clamped = qBound<qreal>(0.0, level, 1.0);
@@ -1930,6 +2103,11 @@ void AppController::flushStreamChunk()
         return;
     }
 
+    const int targetInterval = flushIntervalForProfile();
+    if (m_streamFlushTimer.interval() != targetInterval) {
+        m_streamFlushTimer.setInterval(targetInterval);
+    }
+
     if (!m_streamPendingText.isEmpty()) {
         int chunk = chunkSizeForBacklog(m_streamPendingText.size());
         if (chunk > m_streamPendingText.size()) {
@@ -1954,10 +2132,12 @@ void AppController::maybeFinalizeSuccessfulStream()
     }
 
     const QString finalText = m_streamAccumulatedText;
+    m_responseDoneMs = m_runtimeClock.elapsed();
     m_speakingExpression = expressionFromAssistantText(finalText);
     updateStreamingMessageDisplay(false);
     setModelStatus(QString("Connected: %1").arg(m_selectedModel));
     appendAudit("Completion received");
+    updateLatencySummary();
     clearStreamingState();
     if (m_ttsEnabled) {
         processTtsSentenceBuffer(true);
@@ -2114,6 +2294,12 @@ bool AppController::speakText(const QString &text)
         targetWordMs = 175;
     } else if (m_voiceStyle == "Narrator") {
         targetWordMs = 275;
+    } else if (m_voiceStyle == "Human Female") {
+        targetWordMs = 205;
+    } else if (m_voiceStyle == "Human Male") {
+        targetWordMs = 218;
+    } else if (m_voiceStyle == "Studio") {
+        targetWordMs = 238;
     }
     const int estimatedMs = qMax(wordCount * targetWordMs, toSpeak.size() * 26);
     setMouthBeatMs(qMax(110, estimatedMs / wordCount));
@@ -2151,20 +2337,42 @@ bool AppController::speakText(const QString &text)
         }
 
         qreal lengthScale = 1.0;
+        qreal noiseScale = 0.70;
+        qreal noiseW = 0.78;
         if (m_voiceStyle == "Soft") {
             lengthScale = 1.12;
+            noiseScale = 0.62;
+            noiseW = 0.70;
         } else if (m_voiceStyle == "Bright") {
             lengthScale = 0.92;
+            noiseScale = 0.78;
+            noiseW = 0.84;
         } else if (m_voiceStyle == "Narrator") {
             lengthScale = 1.24;
+            noiseScale = 0.58;
+            noiseW = 0.66;
+        } else if (m_voiceStyle == "Human Female") {
+            lengthScale = 1.01;
+            noiseScale = 0.72;
+            noiseW = 0.82;
+        } else if (m_voiceStyle == "Human Male") {
+            lengthScale = 1.05;
+            noiseScale = 0.68;
+            noiseW = 0.80;
+        } else if (m_voiceStyle == "Studio") {
+            lengthScale = 1.16;
+            noiseScale = 0.56;
+            noiseW = 0.64;
         }
 
         const QString outWav = appDataDir() + "/piper_tts.wav";
-        const QString command = QString("printf %%s %1 | %2 --model %3 --length_scale %4 --output_file %5 && %6 -q %5")
+        const QString command = QString("printf %%s %1 | %2 --model %3 --length_scale %4 --noise_scale %5 --noise_w %6 --output_file %7 && %8 -q %7")
                                     .arg(shellQuote(toSpeak),
                                          shellQuote(m_ttsBinary),
                                          shellQuote(modelPath),
                                          QString::number(lengthScale, 'f', 2),
+                                         QString::number(noiseScale, 'f', 2),
+                                         QString::number(noiseW, 'f', 2),
                                          shellQuote(outWav),
                                          shellQuote(aplay));
 
@@ -2182,9 +2390,11 @@ bool AppController::speakText(const QString &text)
     QStringList fallbackArgs;
     if (m_ttsBinary.endsWith("spd-say")) {
         QString voiceToken;
-        if (m_gender == "Male") {
+        const bool preferFemaleStyle = m_voiceStyle == "Human Female";
+        const bool preferMaleStyle = m_voiceStyle == "Human Male";
+        if (m_gender == "Male" || preferMaleStyle) {
             voiceToken = "male1";
-        } else if (m_gender == "Female") {
+        } else if (m_gender == "Female" || preferFemaleStyle) {
             voiceToken = "female1";
         }
 
@@ -2199,6 +2409,15 @@ bool AppController::speakText(const QString &text)
         } else if (m_voiceStyle == "Narrator") {
             rate = -25;
             pitch = -8;
+        } else if (m_voiceStyle == "Human Female") {
+            rate = -8;
+            pitch = 22;
+        } else if (m_voiceStyle == "Human Male") {
+            rate = -6;
+            pitch = -18;
+        } else if (m_voiceStyle == "Studio") {
+            rate = -18;
+            pitch = -4;
         }
 
         args << "-w" << "-r" << QString::number(rate) << "-p" << QString::number(pitch);
@@ -2209,9 +2428,11 @@ bool AppController::speakText(const QString &text)
         fallbackArgs << "-w" << toSpeak;
     } else {
         QString voiceToken = "en";
-        if (m_gender == "Male") {
+        const bool preferFemaleStyle = m_voiceStyle == "Human Female";
+        const bool preferMaleStyle = m_voiceStyle == "Human Male";
+        if (m_gender == "Male" || preferMaleStyle) {
             voiceToken = "en+m3";
-        } else if (m_gender == "Female") {
+        } else if (m_gender == "Female" || preferFemaleStyle) {
             voiceToken = "en+f3";
         }
 
@@ -2226,6 +2447,15 @@ bool AppController::speakText(const QString &text)
         } else if (m_voiceStyle == "Narrator") {
             speed = 145;
             pitch = 44;
+        } else if (m_voiceStyle == "Human Female") {
+            speed = 172;
+            pitch = 70;
+        } else if (m_voiceStyle == "Human Male") {
+            speed = 168;
+            pitch = 34;
+        } else if (m_voiceStyle == "Studio") {
+            speed = 154;
+            pitch = 46;
         }
 
         args << "-v" << voiceToken << "-s" << QString::number(speed) << "-p" << QString::number(pitch);
@@ -2406,6 +2636,7 @@ void AppController::loadSettings()
     if (!smoothingProfiles().contains(m_smoothingProfile)) {
         m_smoothingProfile = "Terminal";
     }
+    m_fastResponseMode = settings.value("ai/fastResponseMode", m_fastResponseMode).toBool();
 
     m_tokenRate = qBound(20, settings.value("ai/tokenRate", m_tokenRate).toInt(), 600);
     m_lipSyncDelayMs = qBound(0, settings.value("voice/lipSyncDelayMs", m_lipSyncDelayMs).toInt(), 1100);
@@ -2460,6 +2691,7 @@ void AppController::loadSettings()
         m_voiceEngine = "Auto";
     }
     m_piperModelPath = expandPath(settings.value("voice/piperModelPath", m_piperModelPath).toString());
+    m_selectedVoiceModel = expandPath(m_piperModelPath);
     m_ttsEnabled = settings.value("voice/ttsEnabled", m_ttsEnabled).toBool();
     m_memoryEnabled = settings.value("memory/enabled", m_memoryEnabled).toBool();
     m_setupComplete = settings.value("ui/setupComplete", false).toBool();
@@ -2492,6 +2724,7 @@ void AppController::saveSettings() const
     settings.setValue("ai/selectedModel", m_selectedModel);
     settings.setValue("ai/availableModels", m_availableModels);
     settings.setValue("ai/smoothingProfile", m_smoothingProfile);
+    settings.setValue("ai/fastResponseMode", m_fastResponseMode);
     settings.setValue("ai/tokenRate", m_tokenRate);
     settings.setValue("voice/lipSyncDelayMs", m_lipSyncDelayMs);
     settings.setValue("ai/assistantName", m_assistantName);
@@ -2680,6 +2913,7 @@ void AppController::handleInput(const QString &text)
             "/models\n"
             "/model <id>\n"
             "/speed <Instant|Terminal|Balanced|Human|Cinematic>\n"
+            "/fast <on|off>\n"
             "/lip-sync <0-1100>\n"
             "/name <assistant-name>\n"
             "/wake on|off\n"
@@ -2691,12 +2925,14 @@ void AppController::handleInput(const QString &text)
             "/stt-endpoint <url>\n"
             "/stt-model <id>\n"
             "/personality <Helpful|Professional|Witty|Teacher|Hacker|Calm>\n"
-            "/face-style <Loona|Terminal|Orb>\n"
+            "/face-style <Loona|Terminal|Orb|Nova|Pixel>\n"
             "/expression <Subtle|Normal|Dramatic>\n"
             "/gender <Neutral|Male|Female>\n"
-            "/voice-style <Default|Soft|Bright|Narrator>\n"
+            "/voice-style <Default|Soft|Bright|Narrator|Human Female|Human Male|Studio>\n"
             "/voice-engine <Auto|Speech Dispatcher|eSpeak|Piper>\n"
             "/piper-model <path|clear>\n"
+            "/voices-refresh\n"
+            "/voice-model <path>\n"
             "/voices\n"
             "/voice-test\n"
             "/test\n"
@@ -2723,15 +2959,35 @@ void AppController::handleInput(const QString &text)
     }
 
     if (lowered == "/voices") {
+        if (m_availableVoiceModels.isEmpty()) {
+            refreshVoiceModels();
+        }
+        QStringList preview;
+        const int maxItems = qMin(8, m_availableVoiceModels.size());
+        for (int i = 0; i < maxItems; ++i) {
+            const QString path = m_availableVoiceModels.at(i);
+            const QString fileName = QFileInfo(path).fileName();
+            preview.append(QString("- %1 [%2]").arg(fileName, inferGenderFromVoiceModel(path)));
+        }
+        const QString previewText = preview.isEmpty() ? "- (none discovered)" : preview.join("\n");
         postAssistant(
-            QString("Voice options:\nGender: %1\nStyle: %2\nEngine: %3\nCurrent engine: %4\nPiper model: %5\nFace style: %6\nExpression: %7")
+            QString("Voice options:\nGender: %1\nStyle: %2\nEngine: %3\nCurrent engine: %4\nPiper model: %5\nDiscovered Piper models: %6\n%7\nFace style: %8\nExpression: %9")
                 .arg(genders().join(", "),
                      voiceStyles().join(", "),
                      voiceEngines().join(", "),
                      m_voiceEngine,
                      m_piperModelPath.isEmpty() ? "(not set)" : m_piperModelPath,
+                     QString::number(m_availableVoiceModels.size()),
+                     previewText,
                      m_faceStyle,
                      m_expressionIntensity));
+        return;
+    }
+
+    if (lowered == "/voices-refresh") {
+        refreshVoiceModels();
+        postAssistant(QString("Voice model scan complete. Found %1 Piper model(s).")
+                          .arg(m_availableVoiceModels.size()));
         return;
     }
 
@@ -2955,6 +3211,20 @@ void AppController::handleInput(const QString &text)
         return;
     }
 
+    if (lowered.startsWith("/fast ")) {
+        const QString value = lowered.mid(6).trimmed();
+        if (value == "on") {
+            setFastResponseMode(true);
+            return;
+        }
+        if (value == "off") {
+            setFastResponseMode(false);
+            return;
+        }
+        postAssistant("Usage: /fast <on|off>", "warning");
+        return;
+    }
+
     if (lowered.startsWith("/lip-sync ")) {
         bool ok = false;
         const int value = text.mid(10).trimmed().toInt(&ok);
@@ -2981,7 +3251,7 @@ void AppController::handleInput(const QString &text)
             }
         }
         if (!valid) {
-            postAssistant("Usage: /face-style <Loona|Terminal|Orb>", "warning");
+            postAssistant("Usage: /face-style <Loona|Terminal|Orb|Nova|Pixel>", "warning");
             return;
         }
         setFaceStyle(value);
@@ -3039,6 +3309,16 @@ void AppController::handleInput(const QString &text)
             return;
         }
         setPiperModelPath(value);
+        return;
+    }
+
+    if (lowered.startsWith("/voice-model ")) {
+        const QString value = text.mid(13).trimmed();
+        if (value.isEmpty()) {
+            postAssistant("Usage: /voice-model <path>", "warning");
+            return;
+        }
+        setSelectedVoiceModel(value);
         return;
     }
 
@@ -3211,10 +3491,17 @@ void AppController::requestRemoteCompletion(const QString &text)
     setStreamingActive(true);
     updateStreamingMessageDisplay(true);
 
+    m_requestStartMs = m_runtimeClock.elapsed();
+    m_firstTokenMs = -1;
+    m_responseDoneMs = -1;
+    m_ttsStartMs = -1;
+    m_ttsEndMs = -1;
+    updateLatencySummary();
+
     setSpeakingActive(false);
     setFaceState("thinking");
     setStatusText("Waiting for first token...");
-    setModelStatus(QString("Querying %1").arg(m_selectedModel));
+    setModelStatus(QString("Querying %1%2").arg(m_selectedModel, m_fastResponseMode ? " (fast path)" : ""));
     appendAudit("Completion request started");
 
     m_activeChatReply = m_network.post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
@@ -3269,6 +3556,14 @@ void AppController::requestRemoteCompletion(const QString &text)
             }
 
             m_streamSawToken = true;
+            if (m_firstTokenMs < 0 && m_requestStartMs >= 0) {
+                m_firstTokenMs = m_runtimeClock.elapsed();
+                m_lastFirstTokenLatencyMs = m_firstTokenMs - m_requestStartMs;
+                updateLatencySummary();
+                setModelStatus(
+                    QString("First token in %1 (%2)")
+                        .arg(formatDurationMs(m_lastFirstTokenLatencyMs), m_selectedModel));
+            }
             if (!m_ttsEnabled) {
                 setSpeakingActive(true);
                 const QString partial = (m_streamAccumulatedText + m_streamPendingText + token).right(420);
@@ -3307,6 +3602,8 @@ void AppController::requestRemoteCompletion(const QString &text)
                     m_streamingMessageRow,
                     partial.isEmpty() ? "Response canceled." : partial + " [stopped]");
                 appendAudit("Completion canceled");
+                m_responseDoneMs = m_runtimeClock.elapsed();
+                updateLatencySummary();
                 clearStreamingState();
                 finalizeAssistantState();
                 reply->deleteLater();
@@ -3321,6 +3618,8 @@ void AppController::requestRemoteCompletion(const QString &text)
                     partial.isEmpty() ? "Model request failed." : partial + " [connection lost]");
             }
             appendAudit("Completion failed: " + reply->errorString());
+            m_responseDoneMs = m_runtimeClock.elapsed();
+            updateLatencySummary();
             clearStreamingState();
             setFaceState("warning");
             setStatusText("Model request failed");
@@ -3338,6 +3637,11 @@ void AppController::requestRemoteCompletion(const QString &text)
                     const QString content = extractContentFromChoice(choices.first().toObject()).trimmed();
                     if (!content.isEmpty()) {
                         m_streamSawToken = true;
+                        if (m_firstTokenMs < 0 && m_requestStartMs >= 0) {
+                            m_firstTokenMs = m_runtimeClock.elapsed();
+                            m_lastFirstTokenLatencyMs = m_firstTokenMs - m_requestStartMs;
+                            updateLatencySummary();
+                        }
                         m_speakingExpression = expressionFromAssistantText(content);
                         if (!m_ttsEnabled) {
                             setSpeakingActive(true);
@@ -3360,6 +3664,8 @@ void AppController::requestRemoteCompletion(const QString &text)
                 m_messageModel.setTextAt(m_streamingMessageRow, "The model responded, but no text content was returned.");
             }
             appendAudit("Completion empty response");
+            m_responseDoneMs = m_runtimeClock.elapsed();
+            updateLatencySummary();
             clearStreamingState();
             setFaceState("warning");
             setStatusText("No response text");
@@ -4178,6 +4484,7 @@ void AppController::loadProfile(const QString &profileName)
     const QString profileApiKey = settings.value(base + "apiKey", m_apiKey).toString();
     const QString profileModel = settings.value(base + "selectedModel", m_selectedModel).toString().trimmed();
     const QString profileSmoothing = settings.value(base + "smoothingProfile", m_smoothingProfile).toString();
+    const bool profileFastResponseMode = settings.value(base + "fastResponseMode", m_fastResponseMode).toBool();
     const int profileTokenRate = qBound(20, settings.value(base + "tokenRate", m_tokenRate).toInt(), 600);
     const int profileLipSyncDelayMs = qBound(0, settings.value(base + "lipSyncDelayMs", m_lipSyncDelayMs).toInt(), 1100);
     const QString profileAssistantName = settings.value(base + "assistantName", m_assistantName).toString().trimmed();
@@ -4241,6 +4548,11 @@ void AppController::loadProfile(const QString &profileName)
         m_smoothingProfile = profileSmoothing;
         m_streamFlushTimer.setInterval(flushIntervalForProfile());
         emit smoothingProfileChanged();
+    }
+
+    if (m_fastResponseMode != profileFastResponseMode) {
+        m_fastResponseMode = profileFastResponseMode;
+        emit fastResponseModeChanged();
     }
 
     if (m_tokenRate != profileTokenRate) {
@@ -4313,6 +4625,11 @@ void AppController::loadProfile(const QString &profileName)
         m_piperModelPath = profilePiperModelPath;
         emit piperModelPathChanged();
     }
+    const QString normalizedVoiceModel = expandPath(m_piperModelPath);
+    if (m_selectedVoiceModel != normalizedVoiceModel) {
+        m_selectedVoiceModel = normalizedVoiceModel;
+        emit selectedVoiceModelChanged();
+    }
 
     if (m_duplexVoiceEnabled != profileDuplexVoiceEnabled) {
         m_duplexVoiceEnabled = profileDuplexVoiceEnabled;
@@ -4357,6 +4674,7 @@ void AppController::saveProfileToSettings(const QString &profileName) const
     settings.setValue(base + "apiKey", m_apiKey);
     settings.setValue(base + "selectedModel", m_selectedModel);
     settings.setValue(base + "smoothingProfile", m_smoothingProfile);
+    settings.setValue(base + "fastResponseMode", m_fastResponseMode);
     settings.setValue(base + "tokenRate", m_tokenRate);
     settings.setValue(base + "lipSyncDelayMs", m_lipSyncDelayMs);
     settings.setValue(base + "assistantName", m_assistantName);
@@ -4427,7 +4745,19 @@ int AppController::chunkSizeForBacklog(int backlog) const
         }
     }
 
-    const int scaled = qMax(1, (base * m_tokenRate) / 100);
+    int effectiveRate = m_tokenRate;
+    if (m_fastResponseMode) {
+        if (m_streamingActive && !m_streamSawToken) {
+            effectiveRate = qMin(700, static_cast<int>(effectiveRate * 1.65));
+        } else if (backlog > 120) {
+            effectiveRate = qMin(700, static_cast<int>(effectiveRate * 1.35));
+        }
+        if (m_lastFirstTokenLatencyMs > 1800) {
+            effectiveRate = qMin(700, static_cast<int>(effectiveRate * 1.2));
+        }
+    }
+
+    const int scaled = qMax(1, (base * effectiveRate) / 100);
     return scaled;
 }
 
@@ -4446,7 +4776,16 @@ int AppController::flushIntervalForProfile() const
         base = 14;
     }
 
-    const int scaled = qMax(8, (base * 100) / qMax(20, m_tokenRate));
+    int effectiveRate = m_tokenRate;
+    if (m_fastResponseMode) {
+        if (m_streamingActive && !m_streamSawToken) {
+            effectiveRate = qMin(700, static_cast<int>(effectiveRate * 1.5));
+        } else if (m_streamPendingText.size() > 120) {
+            effectiveRate = qMin(700, static_cast<int>(effectiveRate * 1.25));
+        }
+    }
+
+    const int scaled = qMax(6, (base * 100) / qMax(20, effectiveRate));
     return scaled;
 }
 
@@ -4466,4 +4805,33 @@ bool AppController::isRiskyCommand(const QString &command) const
     }
 
     return command.contains('>') || command.contains(">>");
+}
+
+QString AppController::inferGenderFromVoiceModel(const QString &modelPath) const
+{
+    const QString lowered = modelPath.toLower();
+    if (lowered.contains("female")
+        || lowered.contains("fem")
+        || lowered.contains("woman")
+        || lowered.contains("girl")
+        || lowered.contains("f_")
+        || lowered.contains("-f")
+        || lowered.contains("sarah")
+        || lowered.contains("amy")
+        || lowered.contains("aria")
+        || lowered.contains("jenny")) {
+        return "Female";
+    }
+    if (lowered.contains("male")
+        || lowered.contains("man")
+        || lowered.contains("boy")
+        || lowered.contains("m_")
+        || lowered.contains("-m")
+        || lowered.contains("alan")
+        || lowered.contains("david")
+        || lowered.contains("ryan")
+        || lowered.contains("john")) {
+        return "Male";
+    }
+    return "Neutral";
 }

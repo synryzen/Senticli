@@ -17,6 +17,8 @@ Rectangle {
     property var availableModels: []
     property string selectedModel: "local-prototype"
     property string modelStatus: ""
+    property string latencySummary: "Latency n/a"
+    property bool fastResponseMode: true
     property string smoothingProfile: "Balanced"
     property var smoothingProfiles: ["Instant", "Terminal", "Balanced", "Human", "Cinematic"]
     property int tokenRate: 100
@@ -34,16 +36,18 @@ Rectangle {
     property string personality: "Helpful"
     property var personalities: ["Helpful", "Professional", "Witty", "Teacher", "Hacker", "Calm"]
     property string faceStyle: "Loona"
-    property var faceStyles: ["Loona", "Terminal", "Orb"]
+    property var faceStyles: ["Loona", "Terminal", "Orb", "Nova", "Pixel"]
     property string expressionIntensity: "Normal"
     property var expressionIntensityOptions: ["Subtle", "Normal", "Dramatic"]
     property string gender: "Neutral"
     property var genders: ["Neutral", "Male", "Female"]
     property string voiceStyle: "Default"
-    property var voiceStyles: ["Default", "Soft", "Bright", "Narrator"]
+    property var voiceStyles: ["Default", "Soft", "Bright", "Narrator", "Human Female", "Human Male", "Studio"]
     property string voiceEngine: "Auto"
     property var voiceEngines: ["Auto", "Speech Dispatcher", "eSpeak", "Piper"]
     property string piperModelPath: ""
+    property var availableVoiceModels: []
+    property string selectedVoiceModel: ""
     property bool ttsEnabled: false
     property bool memoryEnabled: true
     property var grantedFolders: []
@@ -64,6 +68,7 @@ Rectangle {
     signal testRequested()
     signal modelSelected(string modelName)
     signal smoothingSelected(string profile)
+    signal fastResponseModeToggled(bool enabled)
     signal tokenRateSelected(int rate)
     signal lipSyncDelaySelected(int delayMs)
     signal assistantNameSubmitted(string name)
@@ -82,6 +87,8 @@ Rectangle {
     signal voiceStyleSelected(string voiceStyle)
     signal voiceEngineSelected(string voiceEngine)
     signal piperModelPathSubmitted(string path)
+    signal refreshVoiceModelsRequested()
+    signal selectedVoiceModelSubmitted(string path)
     signal voiceTestRequested()
     signal ttsToggledRequested(bool enabled)
     signal memoryToggledRequested(bool enabled)
@@ -707,6 +714,26 @@ Rectangle {
                         RowLayout {
                             Layout.fillWidth: true
 
+                            Switch {
+                                id: fastResponseSwitch
+                                text: "Fast Response"
+                                checked: root.fastResponseMode
+                                onToggled: root.fastResponseModeToggled(checked)
+                            }
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: root.latencySummary
+                                color: Colors.textSecondary
+                                elide: Label.ElideRight
+                                font.family: Typography.monoFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
                             Label {
                                 text: "Persona"
                                 color: Colors.textSecondary
@@ -827,6 +854,45 @@ Rectangle {
                                 text: "Test Voice"
                                 enabled: !root.streamingActive
                                 onClicked: root.voiceTestRequested()
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Label {
+                                text: "Real Voice Model"
+                                color: Colors.textSecondary
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            ComboBox {
+                                id: voiceModelCombo
+                                Layout.fillWidth: true
+                                model: root.availableVoiceModels
+                                editable: false
+                                font.family: Typography.monoFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            Button {
+                                text: "Use Selected"
+                                enabled: voiceModelCombo.currentText.length > 0
+                                onClicked: {
+                                    if (voiceModelCombo.currentText.length > 0) {
+                                        root.selectedVoiceModelSubmitted(voiceModelCombo.currentText)
+                                    }
+                                }
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            Button {
+                                text: "Refresh Voices"
+                                onClicked: root.refreshVoiceModelsRequested()
                                 font.family: Typography.uiFamily
                                 font.pixelSize: Typography.smallSize
                             }
@@ -1107,6 +1173,10 @@ Rectangle {
         }
     }
 
+    onFastResponseModeChanged: {
+        fastResponseSwitch.checked = fastResponseMode
+    }
+
     onPersonalityChanged: {
         const idx = personalityCombo.find(personality)
         if (idx >= 0) {
@@ -1146,6 +1216,20 @@ Rectangle {
         const idx = voiceEngineCombo.find(voiceEngine)
         if (idx >= 0) {
             voiceEngineCombo.currentIndex = idx
+        }
+    }
+
+    onAvailableVoiceModelsChanged: {
+        const idx = voiceModelCombo.find(selectedVoiceModel)
+        if (idx >= 0) {
+            voiceModelCombo.currentIndex = idx
+        }
+    }
+
+    onSelectedVoiceModelChanged: {
+        const idx = voiceModelCombo.find(selectedVoiceModel)
+        if (idx >= 0) {
+            voiceModelCombo.currentIndex = idx
         }
     }
 
@@ -1226,6 +1310,7 @@ Rectangle {
         ttsSwitch.checked = ttsEnabled
         memorySwitch.checked = memoryEnabled
         piperModelField.text = piperModelPath
+        fastResponseSwitch.checked = fastResponseMode
 
         let idx = profileCombo.find(activeProfile)
         if (idx >= 0) {
@@ -1275,6 +1360,11 @@ Rectangle {
         idx = voiceEngineCombo.find(voiceEngine)
         if (idx >= 0) {
             voiceEngineCombo.currentIndex = idx
+        }
+
+        idx = voiceModelCombo.find(selectedVoiceModel)
+        if (idx >= 0) {
+            voiceModelCombo.currentIndex = idx
         }
 
         idx = duplexSmoothnessCombo.find(duplexSmoothness)

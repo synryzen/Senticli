@@ -41,6 +41,7 @@ ApplicationWindow {
             actionRunning: backend.actionRunning
             folderScope: backend.folderScope
             modelStatus: backend.modelStatus
+            latencySummary: backend.latencySummary
             onModeSelected: function(nextMode) {
                 backend.setMode(nextMode)
             }
@@ -100,6 +101,8 @@ ApplicationWindow {
             availableModels: backend.availableModels
             selectedModel: backend.selectedModel
             modelStatus: backend.modelStatus
+            latencySummary: backend.latencySummary
+            fastResponseMode: backend.fastResponseMode
             smoothingProfile: backend.smoothingProfile
             smoothingProfiles: backend.smoothingProfiles
             tokenRate: backend.tokenRate
@@ -127,6 +130,8 @@ ApplicationWindow {
             voiceEngine: backend.voiceEngine
             voiceEngines: backend.voiceEngines
             piperModelPath: backend.piperModelPath
+            availableVoiceModels: backend.availableVoiceModels
+            selectedVoiceModel: backend.selectedVoiceModel
             ttsEnabled: backend.ttsEnabled
             memoryEnabled: backend.memoryEnabled
             grantedFolders: backend.grantedFolders
@@ -171,6 +176,9 @@ ApplicationWindow {
             }
             onSmoothingSelected: function(profile) {
                 backend.setSmoothingProfile(profile)
+            }
+            onFastResponseModeToggled: function(enabled) {
+                backend.setFastResponseMode(enabled)
             }
             onTokenRateSelected: function(rate) {
                 backend.setTokenRate(rate)
@@ -225,6 +233,12 @@ ApplicationWindow {
             }
             onPiperModelPathSubmitted: function(value) {
                 backend.setPiperModelPath(value)
+            }
+            onRefreshVoiceModelsRequested: {
+                backend.refreshVoiceModels()
+            }
+            onSelectedVoiceModelSubmitted: function(value) {
+                backend.setSelectedVoiceModel(value)
             }
             onVoiceTestRequested: {
                 backend.testVoiceOutput()

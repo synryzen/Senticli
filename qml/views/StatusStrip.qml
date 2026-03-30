@@ -12,6 +12,7 @@ Rectangle {
     property bool actionRunning: false
     property string folderScope: "~/Documents"
     property string modelStatus: ""
+    property string latencySummary: "Latency n/a"
 
     signal modeSelected(string mode)
     signal settingsRequested()
@@ -81,6 +82,15 @@ Rectangle {
             font.pixelSize: Typography.smallSize
             elide: Label.ElideRight
             Layout.maximumWidth: 220
+        }
+
+        Label {
+            text: root.latencySummary
+            color: Colors.textSecondary
+            font.family: Typography.monoFamily
+            font.pixelSize: Typography.smallSize
+            elide: Label.ElideRight
+            Layout.maximumWidth: 260
         }
 
         Label {

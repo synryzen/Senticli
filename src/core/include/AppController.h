@@ -34,6 +34,8 @@ class AppController : public QObject
     Q_PROPERTY(QStringList availableModels READ availableModels NOTIFY availableModelsChanged)
     Q_PROPERTY(QString selectedModel READ selectedModel WRITE setSelectedModel NOTIFY selectedModelChanged)
     Q_PROPERTY(QString modelStatus READ modelStatus NOTIFY modelStatusChanged)
+    Q_PROPERTY(QString latencySummary READ latencySummary NOTIFY latencySummaryChanged)
+    Q_PROPERTY(bool fastResponseMode READ fastResponseMode WRITE setFastResponseMode NOTIFY fastResponseModeChanged)
     Q_PROPERTY(QString smoothingProfile READ smoothingProfile WRITE setSmoothingProfile NOTIFY smoothingProfileChanged)
     Q_PROPERTY(QStringList smoothingProfiles READ smoothingProfiles CONSTANT)
     Q_PROPERTY(int tokenRate READ tokenRate WRITE setTokenRate NOTIFY tokenRateChanged)
@@ -61,6 +63,8 @@ class AppController : public QObject
     Q_PROPERTY(QString voiceEngine READ voiceEngine WRITE setVoiceEngine NOTIFY voiceEngineChanged)
     Q_PROPERTY(QStringList voiceEngines READ voiceEngines CONSTANT)
     Q_PROPERTY(QString piperModelPath READ piperModelPath WRITE setPiperModelPath NOTIFY piperModelPathChanged)
+    Q_PROPERTY(QStringList availableVoiceModels READ availableVoiceModels NOTIFY availableVoiceModelsChanged)
+    Q_PROPERTY(QString selectedVoiceModel READ selectedVoiceModel NOTIFY selectedVoiceModelChanged)
     Q_PROPERTY(bool ttsEnabled READ ttsEnabled WRITE setTtsEnabled NOTIFY ttsEnabledChanged)
     Q_PROPERTY(bool memoryEnabled READ memoryEnabled WRITE setMemoryEnabled NOTIFY memoryEnabledChanged)
     Q_PROPERTY(QStringList grantedFolders READ grantedFolders NOTIFY grantedFoldersChanged)
@@ -97,6 +101,8 @@ public:
     QStringList availableModels() const;
     QString selectedModel() const;
     QString modelStatus() const;
+    QString latencySummary() const;
+    bool fastResponseMode() const;
     QString smoothingProfile() const;
     QStringList smoothingProfiles() const;
     int tokenRate() const;
@@ -124,6 +130,8 @@ public:
     QString voiceEngine() const;
     QStringList voiceEngines() const;
     QString piperModelPath() const;
+    QStringList availableVoiceModels() const;
+    QString selectedVoiceModel() const;
     bool ttsEnabled() const;
     bool memoryEnabled() const;
     QStringList grantedFolders() const;
@@ -155,6 +163,7 @@ public:
     Q_INVOKABLE void saveCurrentProfile(const QString &profileName);
     Q_INVOKABLE void deleteProfile(const QString &profileName);
     Q_INVOKABLE void setSelectedModel(const QString &model);
+    Q_INVOKABLE void setFastResponseMode(bool enabled);
     Q_INVOKABLE void setSmoothingProfile(const QString &profile);
     Q_INVOKABLE void setTokenRate(int rate);
     Q_INVOKABLE void setLipSyncDelayMs(int delayMs);
@@ -174,6 +183,8 @@ public:
     Q_INVOKABLE void setVoiceStyle(const QString &voiceStyle);
     Q_INVOKABLE void setVoiceEngine(const QString &voiceEngine);
     Q_INVOKABLE void setPiperModelPath(const QString &path);
+    Q_INVOKABLE void refreshVoiceModels();
+    Q_INVOKABLE void setSelectedVoiceModel(const QString &modelPath);
     Q_INVOKABLE void setTtsEnabled(bool enabled);
     Q_INVOKABLE void setMemoryEnabled(bool enabled);
     Q_INVOKABLE void refreshModels();
@@ -201,6 +212,8 @@ signals:
     void availableModelsChanged();
     void selectedModelChanged();
     void modelStatusChanged();
+    void latencySummaryChanged();
+    void fastResponseModeChanged();
     void smoothingProfileChanged();
     void tokenRateChanged();
     void lipSyncDelayMsChanged();
@@ -220,6 +233,8 @@ signals:
     void voiceStyleChanged();
     void voiceEngineChanged();
     void piperModelPathChanged();
+    void availableVoiceModelsChanged();
+    void selectedVoiceModelChanged();
     void ttsEnabledChanged();
     void memoryEnabledChanged();
     void grantedFoldersChanged();
@@ -240,6 +255,8 @@ private:
     void setFaceState(const QString &state);
     void setStatusText(const QString &text);
     void setModelStatus(const QString &text);
+    void setLatencySummary(const QString &summary);
+    void updateLatencySummary();
     void setVoiceInputLevel(qreal level);
     void setMouthBeatMs(int beatMs);
     void setCameraAnalyzeRunning(bool running);
@@ -313,6 +330,7 @@ private:
     bool shouldUseRemoteModel() const;
     bool isRiskyCommand(const QString &command) const;
     bool applyDuplexPreset(const QString &presetRaw);
+    QString inferGenderFromVoiceModel(const QString &modelPath) const;
 
     MessageModel m_messageModel;
     QString m_faceState = "idle";
@@ -328,6 +346,8 @@ private:
     QStringList m_availableModels = {"local-prototype"};
     QString m_selectedModel = "local-prototype";
     QString m_modelStatus = "Prototype mode (local rules)";
+    QString m_latencySummary = "Latency n/a";
+    bool m_fastResponseMode = true;
     QString m_smoothingProfile = "Terminal";
     int m_tokenRate = 180;
     int m_lipSyncDelayMs = 360;
@@ -351,6 +371,8 @@ private:
     QString m_voiceStyle = "Default";
     QString m_voiceEngine = "Auto";
     QString m_piperModelPath;
+    QStringList m_availableVoiceModels;
+    QString m_selectedVoiceModel;
     bool m_ttsEnabled = false;
     bool m_memoryEnabled = true;
     bool m_setupComplete = false;
@@ -399,6 +421,12 @@ private:
     bool m_voiceCaptureRunning = false;
     qint64 m_lastBargeInMs = 0;
     qint64 m_echoSuppressUntilMs = 0;
+    qint64 m_requestStartMs = -1;
+    qint64 m_firstTokenMs = -1;
+    qint64 m_responseDoneMs = -1;
+    qint64 m_ttsStartMs = -1;
+    qint64 m_ttsEndMs = -1;
+    qint64 m_lastFirstTokenLatencyMs = 0;
     QElapsedTimer m_runtimeClock;
     QString m_speakingExpression = "speaking";
     QString m_lastShellCommand;

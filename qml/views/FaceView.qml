@@ -28,6 +28,8 @@ Item {
     readonly property bool styleLoona: root.faceStyle === "Loona"
     readonly property bool styleTerminal: root.faceStyle === "Terminal"
     readonly property bool styleOrb: root.faceStyle === "Orb"
+    readonly property bool styleNova: root.faceStyle === "Nova"
+    readonly property bool stylePixel: root.faceStyle === "Pixel"
     readonly property string effectiveState: root.sleepMode ? "sleeping" : root.faceState
     readonly property int intensityMode: root.expressionIntensity === "Subtle"
                                        ? 0
@@ -61,6 +63,8 @@ Item {
         if (root.isSpeaking) return Colors.info
         if (root.isHappy) return Colors.success
         if (root.styleLoona) return "#8AD8FF"
+        if (root.styleNova) return "#63F2FF"
+        if (root.stylePixel) return "#7FFF9D"
         if (root.styleOrb) return "#7EE7D8"
         return Colors.accent
     }
@@ -89,8 +93,18 @@ Item {
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0.0; color: root.styleLoona ? "#101724" : "#151A21" }
-            GradientStop { position: 1.0; color: root.styleLoona ? "#0B111A" : Colors.windowBg }
+            GradientStop {
+                position: 0.0
+                color: root.styleLoona
+                       ? "#101724"
+                       : (root.styleNova ? "#0F1524" : (root.stylePixel ? "#101611" : "#151A21"))
+            }
+            GradientStop {
+                position: 1.0
+                color: root.styleLoona
+                       ? "#0B111A"
+                       : (root.styleNova ? "#0A1120" : (root.stylePixel ? "#0C120D" : Colors.windowBg))
+            }
         }
     }
 
@@ -187,12 +201,18 @@ Item {
 
     Rectangle {
         id: facePlate
-        width: root.styleLoona ? 470 : (root.styleOrb ? 360 : 520)
-        height: root.styleLoona ? 270 : (root.styleOrb ? 360 : 250)
-        radius: root.styleOrb ? 180 : (root.styleLoona ? 46 : 28)
+        width: root.styleLoona
+               ? 470
+               : (root.styleOrb ? 360 : (root.styleNova ? 450 : (root.stylePixel ? 500 : 520)))
+        height: root.styleLoona
+                ? 270
+                : (root.styleOrb ? 360 : (root.styleNova ? 250 : (root.stylePixel ? 240 : 250)))
+        radius: root.styleOrb ? 180 : (root.styleLoona ? 46 : (root.stylePixel ? 12 : 28))
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.verticalCenter: parent.verticalCenter
-        color: root.styleLoona ? "#0A121A" : Colors.panelBg
+        color: root.styleLoona
+               ? "#0A121A"
+               : (root.styleNova ? "#0A111A" : (root.stylePixel ? "#0B130D" : Colors.panelBg))
         border.width: 1
         border.color: root.expressionAccent
         x: root.isAngry || root.isWarning ? root.shakeOffset : 0
@@ -272,7 +292,9 @@ Item {
                     glintOpacity: (root.isWarning || root.isAngry) ? 0.35 : (root.isHappy ? 0.85 : (root.isSleeping ? 0.25 : 0.62))
                     warning: root.isWarning || root.isAngry
                     accentColor: root.expressionAccent
-                    scale: root.styleLoona ? (1.12 + root.intensityFactor * 0.08) : (root.styleOrb ? 1.06 : 1.0)
+                    scale: root.styleLoona
+                           ? (1.12 + root.intensityFactor * 0.08)
+                           : (root.styleOrb ? 1.06 : (root.styleNova ? 1.02 : (root.stylePixel ? 0.92 : 1.0)))
                 }
 
                 Eye {
@@ -285,7 +307,9 @@ Item {
                     glintOpacity: (root.isWarning || root.isAngry) ? 0.35 : (root.isHappy ? 0.85 : (root.isSleeping ? 0.25 : 0.62))
                     warning: root.isWarning || root.isAngry
                     accentColor: root.expressionAccent
-                    scale: root.styleLoona ? (1.12 + root.intensityFactor * 0.08) : (root.styleOrb ? 1.06 : 1.0)
+                    scale: root.styleLoona
+                           ? (1.12 + root.intensityFactor * 0.08)
+                           : (root.styleOrb ? 1.06 : (root.styleNova ? 1.02 : (root.stylePixel ? 0.92 : 1.0)))
                 }
             }
 
