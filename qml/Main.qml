@@ -220,6 +220,9 @@ ApplicationWindow {
             onPiperModelPathSubmitted: function(value) {
                 backend.setPiperModelPath(value)
             }
+            onVoiceTestRequested: {
+                backend.testVoiceOutput()
+            }
             onTtsToggledRequested: function(enabled) {
                 backend.setTtsEnabled(enabled)
             }

@@ -55,6 +55,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - voice gender + voice style selectors
   - voice engine selector (`Auto`, `Speech Dispatcher`, `eSpeak`, `Piper`)
   - optional Piper model path
+  - one-click voice test button
   - voice and memory toggles
   - granted folder permissions manager
   - audit log viewer/clear
@@ -93,6 +94,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - `/voice-style <Default|Soft|Bright|Narrator>`
   - `/voice-engine <Auto|Speech Dispatcher|eSpeak|Piper>`
   - `/piper-model <path|clear>`
+  - `/voice-test`
   - `/voices`
   - `/grant <folder>`
   - `/revoke <folder>`
@@ -202,6 +204,7 @@ You can do the same via commands:
 /voice-style narrator
 /voice-engine Piper
 /piper-model /home/you/models/en_US-lessac-medium.onnx
+/voice-test
 /profile-save my-cloudflare-route
 ```
 

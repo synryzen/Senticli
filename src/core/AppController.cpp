@@ -1592,6 +1592,38 @@ void AppController::testProviderConnection()
     });
 }
 
+void AppController::testVoiceOutput()
+{
+    if (!m_ttsEnabled) {
+        setModelStatus("Voice test requires Voice Output enabled");
+        postAssistant("Enable Voice Output first, then run Voice Test.", "warning");
+        return;
+    }
+
+    if (m_ttsProcess.state() != QProcess::NotRunning || !m_ttsQueue.isEmpty()) {
+        clearTtsQueue();
+        stopSpeaking();
+    }
+
+    m_speakingExpression = "happy";
+    const QString sample = QString("Hello. I'm %1. Voice test complete.")
+                               .arg(m_assistantName);
+    enqueueTtsChunk(sample);
+    m_waitingForTtsDrain = false;
+    startNextTtsChunk();
+
+    if (m_ttsProcess.state() != QProcess::NotRunning || !m_ttsQueue.isEmpty()) {
+        setModelStatus("Testing voice output...");
+        setFaceState("happy");
+        setStatusText("Testing voice...");
+        appendAudit("Voice test started");
+        return;
+    }
+
+    setModelStatus("Voice test failed");
+    appendAudit("Voice test failed to start");
+}
+
 void AppController::addGrantedFolder(const QString &folder)
 {
     const QString normalized = expandPath(folder);
@@ -2057,6 +2089,7 @@ bool AppController::speakText(const QString &text)
     }
 
     if (m_ttsBinary.isEmpty()) {
+        setModelStatus("No TTS backend found");
         appendAudit("No TTS backend found (needs spd-say, espeak, or piper)");
         return false;
     }
@@ -2065,17 +2098,20 @@ bool AppController::speakText(const QString &text)
 
     if (m_ttsBinary.endsWith("piper")) {
         if (m_piperModelPath.trimmed().isEmpty()) {
+            setModelStatus("Piper selected but no model path set");
             appendAudit("Piper selected but no model path configured");
             return false;
         }
         const QString modelPath = expandPath(m_piperModelPath);
         if (!QFileInfo::exists(modelPath)) {
+            setModelStatus("Piper model file not found");
             appendAudit("Piper model file not found: " + modelPath);
             return false;
         }
 
         const QString aplay = QStandardPaths::findExecutable("aplay");
         if (aplay.isEmpty()) {
+            setModelStatus("Piper requires aplay");
             appendAudit("Piper playback requires aplay");
             return false;
         }
@@ -2103,6 +2139,7 @@ bool AppController::speakText(const QString &text)
             return true;
         }
 
+        setModelStatus("Piper TTS start failed");
         appendAudit("Piper TTS failed: " + m_ttsProcess.errorString());
         return false;
     }
@@ -2173,6 +2210,7 @@ bool AppController::speakText(const QString &text)
         return true;
     }
 
+    setModelStatus("Voice output failed to start");
     appendAudit("TTS failed: " + m_ttsProcess.errorString());
     return false;
 }
@@ -2620,6 +2658,7 @@ void AppController::handleInput(const QString &text)
             "/voice-engine <Auto|Speech Dispatcher|eSpeak|Piper>\n"
             "/piper-model <path|clear>\n"
             "/voices\n"
+            "/voice-test\n"
             "/test\n"
             "/run <command>\n"
             "/cancel\n"
@@ -2651,6 +2690,11 @@ void AppController::handleInput(const QString &text)
                      voiceEngines().join(", "),
                      m_voiceEngine,
                      m_piperModelPath.isEmpty() ? "(not set)" : m_piperModelPath));
+        return;
+    }
+
+    if (lowered == "/voice-test") {
+        testVoiceOutput();
         return;
     }
 

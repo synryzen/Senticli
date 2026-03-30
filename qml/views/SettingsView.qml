@@ -79,6 +79,7 @@ Rectangle {
     signal voiceStyleSelected(string voiceStyle)
     signal voiceEngineSelected(string voiceEngine)
     signal piperModelPathSubmitted(string path)
+    signal voiceTestRequested()
     signal ttsToggledRequested(bool enabled)
     signal memoryToggledRequested(bool enabled)
     signal addFolderRequested(string folder)
@@ -799,6 +800,14 @@ Rectangle {
                             Button {
                                 text: "Set Piper Model"
                                 onClicked: root.piperModelPathSubmitted(piperModelField.text)
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            Button {
+                                text: "Test Voice"
+                                enabled: !root.streamingActive
+                                onClicked: root.voiceTestRequested()
                                 font.family: Typography.uiFamily
                                 font.pixelSize: Typography.smallSize
                             }

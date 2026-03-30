@@ -173,6 +173,7 @@ public:
     Q_INVOKABLE void setMemoryEnabled(bool enabled);
     Q_INVOKABLE void refreshModels();
     Q_INVOKABLE void testProviderConnection();
+    Q_INVOKABLE void testVoiceOutput();
     Q_INVOKABLE void addGrantedFolder(const QString &folder);
     Q_INVOKABLE void removeGrantedFolder(const QString &folder);
     Q_INVOKABLE void clearAuditEntries();
