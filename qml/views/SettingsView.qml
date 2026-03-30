@@ -20,6 +20,7 @@ Rectangle {
     property string smoothingProfile: "Balanced"
     property var smoothingProfiles: ["Instant", "Terminal", "Balanced", "Human", "Cinematic"]
     property int tokenRate: 100
+    property int lipSyncDelayMs: 360
     property string assistantName: "Senticli"
     property bool wakeEnabled: true
     property var wakeResponses: ["How can I help you?"]
@@ -59,6 +60,7 @@ Rectangle {
     signal modelSelected(string modelName)
     signal smoothingSelected(string profile)
     signal tokenRateSelected(int rate)
+    signal lipSyncDelaySelected(int delayMs)
     signal assistantNameSubmitted(string name)
     signal wakeEnabledToggled(bool enabled)
     signal wakeResponsesSubmitted(var responses)
@@ -796,6 +798,39 @@ Rectangle {
 
                         RowLayout {
                             Layout.fillWidth: true
+
+                            Label {
+                                text: "Lip Sync Delay"
+                                color: Colors.textSecondary
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            Slider {
+                                id: lipSyncSlider
+                                Layout.fillWidth: true
+                                from: 0
+                                to: 1100
+                                stepSize: 10
+                                live: false
+                                onMoved: root.lipSyncDelaySelected(Math.round(value))
+                                onValueChanged: {
+                                    if (!pressed) {
+                                        root.lipSyncDelaySelected(Math.round(value))
+                                    }
+                                }
+                            }
+
+                            Label {
+                                text: Math.round(lipSyncSlider.value) + " ms"
+                                color: Colors.textPrimary
+                                font.family: Typography.monoFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
                             spacing: 16
 
                             Switch {
@@ -1035,6 +1070,10 @@ Rectangle {
         tokenRateSlider.value = tokenRate
     }
 
+    onLipSyncDelayMsChanged: {
+        lipSyncSlider.value = lipSyncDelayMs
+    }
+
     onAssistantNameChanged: {
         assistantNameField.text = assistantName
     }
@@ -1088,6 +1127,7 @@ Rectangle {
         apiKeyField.text = apiKey
         cameraEnabledSwitch.checked = cameraEnabled
         tokenRateSlider.value = tokenRate
+        lipSyncSlider.value = lipSyncDelayMs
         assistantNameField.text = assistantName
         wakeEnabledSwitch.checked = wakeEnabled
         wakeResponsesArea.text = wakeResponses.join("\n")

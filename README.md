@@ -35,6 +35,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Voice-utterance buffering combines partial STT fragments before dispatch for smoother turn-taking
 - Live listening meter on the face panel while mic is active
 - Word-cadence mouth timing (less pre-audio flapping, smoother speech sync)
+- Adjustable lip-sync delay control in AI Settings (fine-tune mouth/audio alignment)
 - Dedicated AI Settings panel with:
   - saved connection profiles (save/load/delete presets)
   - provider + endpoint controls
@@ -74,6 +75,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - `/cancel`
   - `/model <id>`
   - `/speed <Instant|Terminal|Balanced|Human|Cinematic>`
+  - `/lip-sync <0-1100>`
   - `/name <assistant-name>`
   - `/wake <on|off>`
   - `/conversation <on|off>`
@@ -179,6 +181,7 @@ You can do the same via commands:
 /models
 /model your-model-id
 /speed instant
+/lip-sync 420
 /name Nova
 /wake on
 /conversation on

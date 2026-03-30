@@ -16,9 +16,12 @@ Item {
 
     property real blinkFactor: 1.0
     property real driftX: 0.0
+    property real driftY: 0.0
     property real moodSwing: 0.0
     property real idleBob: 0.0
     property real talkBeat: 0.0
+    property real shakeOffset: 0.0
+    property real listenPulse: 0.0
     property bool sleepMode: false
     readonly property bool styleLoona: root.faceStyle === "Loona"
     readonly property bool styleTerminal: root.faceStyle === "Terminal"
@@ -173,10 +176,17 @@ Item {
         color: root.styleLoona ? "#0A121A" : Colors.panelBg
         border.width: 1
         border.color: root.expressionAccent
-        y: (root.isSpeaking ? (-6 + root.talkBeat) : (root.isListening ? -2 : 0)) + root.idleBob + (root.isSleeping ? 4 : 0)
-        scale: root.isSpeaking ? (1.014 + root.talkBeat * 0.004) : 1.0
-        rotation: root.isConfused ? -1.8 : (root.isHappy ? 0.8 : (root.isAngry ? -0.5 : 0))
+        x: root.isAngry || root.isWarning ? root.shakeOffset : 0
+        y: (root.isSpeaking ? (-6 + root.talkBeat) : (root.isListening ? (-2 + root.listenPulse * 1.1) : 0))
+           + root.idleBob + (root.isSleeping ? 4 : 0) + (root.driftY * 3.2)
+        scale: root.isSpeaking
+               ? (1.014 + root.talkBeat * 0.004)
+               : (root.isHappy ? 1.008 + root.listenPulse * 0.002 : 1.0)
+        rotation: root.isConfused
+                  ? -1.8
+                  : (root.isHappy ? (0.8 + root.listenPulse * 0.8) : (root.isAngry ? -0.5 : 0))
 
+        Behavior on x { NumberAnimation { duration: 70; easing.type: Easing.InOutQuad } }
         Behavior on y { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         Behavior on rotation { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
@@ -220,7 +230,8 @@ Item {
                 Eye {
                     openness: (root.isSleeping ? 0.18 : ((root.isWarning || root.isAngry) ? 0.42 : (root.isThinking ? 0.64 : (root.isHappy ? 0.9 : (root.isSad ? 0.72 : 0.94))))) * root.blinkFactor
                     focusX: root.isThinking ? -0.34 : (root.isListening ? 0.22 : (root.driftX + root.moodSwing * 0.14))
-                    focusY: root.isThinking ? -0.2 : (root.isSpeaking ? (0.07 + root.talkBeat * 0.11) : (root.isHappy ? -0.04 : (root.isSad ? 0.04 : 0.0)))
+                    focusY: (root.isThinking ? -0.2 : (root.isSpeaking ? (0.07 + root.talkBeat * 0.11) : (root.isHappy ? -0.04 : (root.isSad ? 0.04 : 0.0))))
+                            + (root.driftY * 0.28)
                     squint: (root.isWarning || root.isAngry) ? 0.62 : (root.isSpeaking ? 0.2 : (root.isHappy ? 0.08 : 0.0))
                     pupilScale: root.isWarning ? 0.86 : (root.isSpeaking ? 1.08 : 1.0)
                     glintOpacity: (root.isWarning || root.isAngry) ? 0.35 : (root.isHappy ? 0.85 : (root.isSleeping ? 0.25 : 0.62))
@@ -232,7 +243,8 @@ Item {
                 Eye {
                     openness: (root.isSleeping ? 0.18 : ((root.isWarning || root.isAngry) ? 0.42 : (root.isThinking ? 0.64 : (root.isHappy ? 0.9 : (root.isSad ? 0.72 : 0.94))))) * root.blinkFactor
                     focusX: root.isThinking ? 0.34 : (root.isListening ? -0.22 : (-root.driftX + root.moodSwing * 0.14))
-                    focusY: root.isThinking ? -0.2 : (root.isSpeaking ? (0.07 + root.talkBeat * 0.11) : (root.isHappy ? -0.04 : (root.isSad ? 0.04 : 0.0)))
+                    focusY: (root.isThinking ? -0.2 : (root.isSpeaking ? (0.07 + root.talkBeat * 0.11) : (root.isHappy ? -0.04 : (root.isSad ? 0.04 : 0.0))))
+                            + (root.driftY * 0.28)
                     squint: (root.isWarning || root.isAngry) ? 0.62 : (root.isSpeaking ? 0.2 : (root.isHappy ? 0.08 : 0.0))
                     pupilScale: root.isWarning ? 0.86 : (root.isSpeaking ? 1.08 : 1.0)
                     glintOpacity: (root.isWarning || root.isAngry) ? 0.35 : (root.isHappy ? 0.85 : (root.isSleeping ? 0.25 : 0.62))
@@ -363,15 +375,49 @@ Item {
     }
 
     Timer {
-        interval: 1700
+        id: lookTimer
+        interval: root.isListening ? 900 : 1500
         running: true
         repeat: true
         onTriggered: {
-            if (root.isThinking || root.isListening || root.isWarning) {
-                root.driftX = 0
+            if (root.isThinking) {
+                root.driftX = (Math.random() * 0.32) - 0.16
+                root.driftY = -0.2 + Math.random() * 0.1
+                return
+            }
+            if (root.isListening) {
+                root.driftX = (Math.random() * 0.7) - 0.35
+                root.driftY = (Math.random() * 0.24) - 0.12
+                return
+            }
+            if (root.isWarning || root.isAngry) {
+                root.driftX = (Math.random() * 0.14) - 0.07
+                root.driftY = 0.03
                 return
             }
             root.driftX = (Math.random() * 0.9) - 0.45
+            root.driftY = (Math.random() * 0.24) - 0.12
+        }
+    }
+
+    Timer {
+        id: shakeTimer
+        interval: 70
+        running: root.isAngry || root.isWarning
+        repeat: true
+        onTriggered: {
+            root.shakeOffset = (Math.random() * 3.6) - 1.8
+        }
+    }
+
+    onIsAngryChanged: {
+        if (!root.isAngry && !root.isWarning) {
+            root.shakeOffset = 0
+        }
+    }
+    onIsWarningChanged: {
+        if (!root.isAngry && !root.isWarning) {
+            root.shakeOffset = 0
         }
     }
 
@@ -392,8 +438,15 @@ Item {
     SequentialAnimation on talkBeat {
         loops: Animation.Infinite
         running: root.isSpeaking
-        NumberAnimation { from: -1.0; to: 1.0; duration: 130; easing.type: Easing.InOutSine }
-        NumberAnimation { from: 1.0; to: -1.0; duration: 130; easing.type: Easing.InOutSine }
+        NumberAnimation { from: -1.0; to: 1.0; duration: Math.max(70, Math.round(root.mouthBeatMs * 0.45)); easing.type: Easing.InOutSine }
+        NumberAnimation { from: 1.0; to: -1.0; duration: Math.max(70, Math.round(root.mouthBeatMs * 0.45)); easing.type: Easing.InOutSine }
+    }
+
+    SequentialAnimation on listenPulse {
+        loops: Animation.Infinite
+        running: root.isListening && !root.isSpeaking
+        NumberAnimation { from: -1.0; to: 1.0; duration: 500; easing.type: Easing.InOutSine }
+        NumberAnimation { from: 1.0; to: -1.0; duration: 500; easing.type: Easing.InOutSine }
     }
 
     SequentialAnimation {

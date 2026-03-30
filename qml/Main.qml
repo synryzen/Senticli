@@ -102,6 +102,7 @@ ApplicationWindow {
             smoothingProfile: backend.smoothingProfile
             smoothingProfiles: backend.smoothingProfiles
             tokenRate: backend.tokenRate
+            lipSyncDelayMs: backend.lipSyncDelayMs
             assistantName: backend.assistantName
             wakeEnabled: backend.wakeEnabled
             wakeResponses: backend.wakeResponses
@@ -167,6 +168,9 @@ ApplicationWindow {
             }
             onTokenRateSelected: function(rate) {
                 backend.setTokenRate(rate)
+            }
+            onLipSyncDelaySelected: function(delayMs) {
+                backend.setLipSyncDelayMs(delayMs)
             }
             onAssistantNameSubmitted: function(value) {
                 backend.setAssistantName(value)

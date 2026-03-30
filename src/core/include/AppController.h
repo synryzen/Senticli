@@ -37,6 +37,7 @@ class AppController : public QObject
     Q_PROPERTY(QString smoothingProfile READ smoothingProfile WRITE setSmoothingProfile NOTIFY smoothingProfileChanged)
     Q_PROPERTY(QStringList smoothingProfiles READ smoothingProfiles CONSTANT)
     Q_PROPERTY(int tokenRate READ tokenRate WRITE setTokenRate NOTIFY tokenRateChanged)
+    Q_PROPERTY(int lipSyncDelayMs READ lipSyncDelayMs WRITE setLipSyncDelayMs NOTIFY lipSyncDelayMsChanged)
     Q_PROPERTY(QString assistantName READ assistantName WRITE setAssistantName NOTIFY assistantNameChanged)
     Q_PROPERTY(bool wakeEnabled READ wakeEnabled WRITE setWakeEnabled NOTIFY wakeEnabledChanged)
     Q_PROPERTY(QStringList wakeResponses READ wakeResponses NOTIFY wakeResponsesChanged)
@@ -94,6 +95,7 @@ public:
     QString smoothingProfile() const;
     QStringList smoothingProfiles() const;
     int tokenRate() const;
+    int lipSyncDelayMs() const;
     QString assistantName() const;
     bool wakeEnabled() const;
     QStringList wakeResponses() const;
@@ -145,6 +147,7 @@ public:
     Q_INVOKABLE void setSelectedModel(const QString &model);
     Q_INVOKABLE void setSmoothingProfile(const QString &profile);
     Q_INVOKABLE void setTokenRate(int rate);
+    Q_INVOKABLE void setLipSyncDelayMs(int delayMs);
     Q_INVOKABLE void setAssistantName(const QString &name);
     Q_INVOKABLE void setWakeEnabled(bool enabled);
     Q_INVOKABLE void setWakeResponses(const QStringList &responses);
@@ -186,6 +189,7 @@ signals:
     void modelStatusChanged();
     void smoothingProfileChanged();
     void tokenRateChanged();
+    void lipSyncDelayMsChanged();
     void assistantNameChanged();
     void wakeEnabledChanged();
     void wakeResponsesChanged();
@@ -309,6 +313,7 @@ private:
     QString m_modelStatus = "Prototype mode (local rules)";
     QString m_smoothingProfile = "Terminal";
     int m_tokenRate = 180;
+    int m_lipSyncDelayMs = 360;
     QString m_assistantName = "Senticli";
     bool m_wakeEnabled = true;
     QStringList m_wakeResponses = {"How can I help you?",

@@ -22,15 +22,15 @@ Item {
     readonly property bool styleListening: stateName === "listening"
 
     readonly property var openFrames: root.styleName === "Loona"
-                                      ? [10, 16, 24, 14, 22, 12, 20, 15]
+                                      ? [8, 14, 20, 12, 18, 10, 16, 13]
                                       : (root.styleName === "Orb"
-                                         ? [8, 18, 12, 20, 10, 16, 12, 22]
-                                         : [12, 28, 18, 34, 16, 24, 20, 30])
+                                         ? [7, 16, 11, 18, 9, 14, 11, 20]
+                                         : [10, 24, 16, 30, 14, 20, 18, 26])
     readonly property var widthFrames: root.styleName === "Loona"
-                                       ? [108, 122, 138, 116, 132, 114, 128, 120]
+                                       ? [104, 118, 132, 112, 126, 110, 122, 116]
                                        : (root.styleName === "Orb"
-                                          ? [100, 120, 106, 126, 108, 124, 110, 128]
-                                          : [118, 142, 108, 150, 120, 136, 124, 146])
+                                          ? [98, 116, 104, 122, 106, 120, 108, 124]
+                                          : [114, 136, 106, 144, 116, 132, 120, 138])
     readonly property var tiltFrames: root.styleName === "Terminal"
                                       ? [-2, 2, -1, 1, 0, -1, 2, -2]
                                       : [-1, 1, 0, 1, 0, -1, 1, -1]
@@ -208,7 +208,7 @@ Item {
         }
 
         Behavior on width { NumberAnimation { duration: 66; easing.type: Easing.OutCubic } }
-        Behavior on height { NumberAnimation { duration: 66; easing.type: Easing.OutCubic } }
+        Behavior on height { NumberAnimation { duration: Math.max(58, Math.min(110, root.beatMs / 2)); easing.type: Easing.OutCubic } }
         Behavior on rotation { NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }
     }
 }

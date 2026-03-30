@@ -62,7 +62,10 @@ AppController::AppController(QObject *parent)
         m_ttsQueueRunning = true;
         m_echoSuppressUntilMs = m_runtimeClock.elapsed() + echoSuppressStartMs();
         const QString expression = m_speakingExpression;
-        const int startLeadMs = m_ttsBinary.endsWith("spd-say") ? 260 : 170;
+        int startLeadMs = m_lipSyncDelayMs;
+        if (!m_ttsBinary.endsWith("spd-say")) {
+            startLeadMs = qMax(90, m_lipSyncDelayMs - 140);
+        }
         QTimer::singleShot(startLeadMs, this, [this, expression]() {
             if (m_ttsProcess.state() == QProcess::NotRunning) {
                 return;
@@ -235,6 +238,11 @@ QStringList AppController::smoothingProfiles() const
 int AppController::tokenRate() const
 {
     return m_tokenRate;
+}
+
+int AppController::lipSyncDelayMs() const
+{
+    return m_lipSyncDelayMs;
 }
 
 QString AppController::assistantName() const
@@ -1010,6 +1018,23 @@ void AppController::setTokenRate(int rate)
     emit tokenRateChanged();
     setModelStatus(QString("Token rate: %1%").arg(m_tokenRate));
     appendAudit(QString("Token rate set: %1").arg(m_tokenRate));
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
+void AppController::setLipSyncDelayMs(int delayMs)
+{
+    const int clamped = qBound(0, delayMs, 1100);
+    if (m_lipSyncDelayMs == clamped) {
+        return;
+    }
+
+    m_lipSyncDelayMs = clamped;
+    emit lipSyncDelayMsChanged();
+    setModelStatus(QString("Lip sync delay: %1 ms").arg(m_lipSyncDelayMs));
+    appendAudit(QString("Lip sync delay set: %1 ms").arg(m_lipSyncDelayMs));
     if (!m_activeProfile.isEmpty()) {
         saveProfileToSettings(m_activeProfile);
     }
@@ -2198,6 +2223,7 @@ void AppController::loadSettings()
     }
 
     m_tokenRate = qBound(20, settings.value("ai/tokenRate", m_tokenRate).toInt(), 600);
+    m_lipSyncDelayMs = qBound(0, settings.value("voice/lipSyncDelayMs", m_lipSyncDelayMs).toInt(), 1100);
     m_assistantName = settings.value("ai/assistantName", m_assistantName).toString().trimmed();
     if (m_assistantName.isEmpty()) {
         m_assistantName = "Senticli";
@@ -2273,6 +2299,7 @@ void AppController::saveSettings() const
     settings.setValue("ai/availableModels", m_availableModels);
     settings.setValue("ai/smoothingProfile", m_smoothingProfile);
     settings.setValue("ai/tokenRate", m_tokenRate);
+    settings.setValue("voice/lipSyncDelayMs", m_lipSyncDelayMs);
     settings.setValue("ai/assistantName", m_assistantName);
     settings.setValue("ai/wakeEnabled", m_wakeEnabled);
     settings.setValue("ai/wakeResponses", m_wakeResponses);
@@ -2440,6 +2467,7 @@ void AppController::handleInput(const QString &text)
             "/models\n"
             "/model <id>\n"
             "/speed <Instant|Terminal|Balanced|Human|Cinematic>\n"
+            "/lip-sync <0-1100>\n"
             "/name <assistant-name>\n"
             "/wake on|off\n"
             "/conversation on|off\n"
@@ -2696,6 +2724,17 @@ void AppController::handleInput(const QString &text)
 
     if (lowered.startsWith("/speed ")) {
         setSmoothingProfile(text.mid(7).trimmed());
+        return;
+    }
+
+    if (lowered.startsWith("/lip-sync ")) {
+        bool ok = false;
+        const int value = text.mid(10).trimmed().toInt(&ok);
+        if (!ok) {
+            postAssistant("Usage: /lip-sync <0-1100>", "warning");
+            return;
+        }
+        setLipSyncDelayMs(value);
         return;
     }
 
@@ -3825,6 +3864,7 @@ void AppController::loadProfile(const QString &profileName)
     const QString profileModel = settings.value(base + "selectedModel", m_selectedModel).toString().trimmed();
     const QString profileSmoothing = settings.value(base + "smoothingProfile", m_smoothingProfile).toString();
     const int profileTokenRate = qBound(20, settings.value(base + "tokenRate", m_tokenRate).toInt(), 600);
+    const int profileLipSyncDelayMs = qBound(0, settings.value(base + "lipSyncDelayMs", m_lipSyncDelayMs).toInt(), 1100);
     const QString profileAssistantName = settings.value(base + "assistantName", m_assistantName).toString().trimmed();
     const bool profileWakeEnabled = settings.value(base + "wakeEnabled", m_wakeEnabled).toBool();
     QStringList profileWakeResponses = settings.value(base + "wakeResponses", m_wakeResponses).toStringList();
@@ -3888,6 +3928,11 @@ void AppController::loadProfile(const QString &profileName)
         m_tokenRate = profileTokenRate;
         m_streamFlushTimer.setInterval(flushIntervalForProfile());
         emit tokenRateChanged();
+    }
+
+    if (m_lipSyncDelayMs != profileLipSyncDelayMs) {
+        m_lipSyncDelayMs = profileLipSyncDelayMs;
+        emit lipSyncDelayMsChanged();
     }
 
     if (!profileAssistantName.isEmpty() && m_assistantName != profileAssistantName) {
@@ -3977,6 +4022,7 @@ void AppController::saveProfileToSettings(const QString &profileName) const
     settings.setValue(base + "selectedModel", m_selectedModel);
     settings.setValue(base + "smoothingProfile", m_smoothingProfile);
     settings.setValue(base + "tokenRate", m_tokenRate);
+    settings.setValue(base + "lipSyncDelayMs", m_lipSyncDelayMs);
     settings.setValue(base + "assistantName", m_assistantName);
     settings.setValue(base + "wakeEnabled", m_wakeEnabled);
     settings.setValue(base + "wakeResponses", m_wakeResponses);
