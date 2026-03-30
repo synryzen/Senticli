@@ -885,6 +885,46 @@ void AppController::setDuplexSmoothness(const QString &value)
     saveSettings();
 }
 
+bool AppController::applyDuplexPreset(const QString &presetRaw)
+{
+    const QString preset = presetRaw.trimmed().toLower();
+    if (preset.isEmpty()) {
+        return false;
+    }
+
+    QString smoothness;
+    int sensitivity = m_vadSensitivity;
+    QString display;
+
+    if (preset == "fast" || preset == "responsive") {
+        smoothness = "Responsive";
+        sensitivity = 58;
+        display = "Fast";
+    } else if (preset == "balanced") {
+        smoothness = "Balanced";
+        sensitivity = 50;
+        display = "Balanced";
+    } else if (preset == "human" || preset == "natural") {
+        smoothness = "Natural";
+        sensitivity = 64;
+        display = "Human";
+    } else if (preset == "studio") {
+        smoothness = "Studio";
+        sensitivity = 42;
+        display = "Studio";
+    } else {
+        return false;
+    }
+
+    setDuplexSmoothness(smoothness);
+    setVadSensitivity(sensitivity);
+    setModelStatus(QString("Duplex preset: %1 (%2, VAD %3)")
+                       .arg(display, smoothness)
+                       .arg(sensitivity));
+    appendAudit(QString("Duplex preset applied: %1").arg(display));
+    return true;
+}
+
 void AppController::setPersonality(const QString &personality)
 {
     const QString trimmed = personality.trimmed();
@@ -1999,6 +2039,7 @@ void AppController::handleInput(const QString &text)
             "/conversation on|off\n"
             "/duplex on|off\n"
             "/duplex-smooth <Responsive|Balanced|Natural|Studio>\n"
+            "/duplex-preset <fast|balanced|human|studio>\n"
             "/vad <1-100>\n"
             "/stt-endpoint <url>\n"
             "/stt-model <id>\n"
@@ -2191,6 +2232,14 @@ void AppController::handleInput(const QString &text)
             return;
         }
         setDuplexSmoothness(value);
+        return;
+    }
+
+    if (lowered.startsWith("/duplex-preset ")) {
+        const QString value = text.mid(15).trimmed();
+        if (!applyDuplexPreset(value)) {
+            postAssistant("Usage: /duplex-preset <fast|balanced|human|studio>", "warning");
+        }
         return;
     }
 

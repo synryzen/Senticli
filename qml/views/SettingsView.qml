@@ -447,6 +447,52 @@ Rectangle {
                             }
                         }
 
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Label {
+                                text: "Quick Tune"
+                                color: Colors.textSecondary
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            Button {
+                                text: "Fast"
+                                onClicked: {
+                                    root.duplexSmoothnessSelected("Responsive")
+                                    root.vadSensitivitySelected(58)
+                                }
+                            }
+
+                            Button {
+                                text: "Balanced"
+                                onClicked: {
+                                    root.duplexSmoothnessSelected("Balanced")
+                                    root.vadSensitivitySelected(50)
+                                }
+                            }
+
+                            Button {
+                                text: "Human"
+                                highlighted: true
+                                onClicked: {
+                                    root.duplexSmoothnessSelected("Natural")
+                                    root.vadSensitivitySelected(64)
+                                }
+                            }
+
+                            Button {
+                                text: "Studio"
+                                onClicked: {
+                                    root.duplexSmoothnessSelected("Studio")
+                                    root.vadSensitivitySelected(42)
+                                }
+                            }
+
+                            Item { Layout.fillWidth: true }
+                        }
+
                         Label {
                             text: "Wake responses (one line each)"
                             color: Colors.textSecondary

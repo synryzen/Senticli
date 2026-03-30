@@ -265,6 +265,7 @@ private:
     int flushIntervalForProfile() const;
     bool shouldUseRemoteModel() const;
     bool isRiskyCommand(const QString &command) const;
+    bool applyDuplexPreset(const QString &presetRaw);
 
     MessageModel m_messageModel;
     QString m_faceState = "idle";

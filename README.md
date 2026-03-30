@@ -28,6 +28,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Duplex voice beta (continuous mic chunks + STT endpoint + wake phrase routing)
 - Echo suppression in duplex mode to avoid self-transcription while speaking
 - Tunable duplex controls: VAD sensitivity + smoothness preset (Responsive/Balanced/Natural/Studio)
+- One-click duplex quick-tune presets in AI Settings (Fast/Balanced/Human/Studio)
 - Dedicated AI Settings panel with:
   - saved connection profiles (save/load/delete presets)
   - provider + endpoint controls
@@ -71,6 +72,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - `/conversation <on|off>`
   - `/duplex <on|off>`
   - `/duplex-smooth <Responsive|Balanced|Natural|Studio>`
+  - `/duplex-preset <fast|balanced|human|studio>`
   - `/vad <1-100>`
   - `/stt-endpoint <url|auto>`
   - `/stt-model <id>`
@@ -169,6 +171,7 @@ You can do the same via commands:
 /wake on
 /conversation on
 /duplex on
+/duplex-preset human
 /duplex-smooth natural
 /vad 65
 /stt-endpoint https://lm.msidragon.com/v1/audio/transcriptions
