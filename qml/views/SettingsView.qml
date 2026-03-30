@@ -77,6 +77,7 @@ Rectangle {
 
         ScrollView {
             Layout.fillWidth: true
+            Layout.fillHeight: true
             ColumnLayout {
                 width: root.width - 28
                 spacing: 10
