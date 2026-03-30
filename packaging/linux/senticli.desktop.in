@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Senticli
+Comment=Local-first Linux AI terminal companion
+Exec=senticli
+Terminal=false
+Categories=Development;Utility;
+StartupNotify=true
