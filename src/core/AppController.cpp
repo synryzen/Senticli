@@ -1324,8 +1324,9 @@ bool AppController::speakText(const QString &text)
     stopSpeaking();
 
     QStringList args;
+    QStringList fallbackArgs;
     if (m_ttsBinary.endsWith("spd-say")) {
-        QString voiceToken = "neutral";
+        QString voiceToken;
         if (m_gender == "Male") {
             voiceToken = "male1";
         } else if (m_gender == "Female") {
@@ -1345,8 +1346,12 @@ bool AppController::speakText(const QString &text)
             pitch = -8;
         }
 
-        args << "-t" << voiceToken << "-r" << QString::number(rate) << "-p" << QString::number(pitch);
+        args << "-w" << "-r" << QString::number(rate) << "-p" << QString::number(pitch);
+        if (!voiceToken.isEmpty()) {
+            args << "-t" << voiceToken;
+        }
         args << toSpeak;
+        fallbackArgs << "-w" << toSpeak;
     } else {
         QString voiceToken = "en";
         if (m_gender == "Male") {
@@ -1370,10 +1375,22 @@ bool AppController::speakText(const QString &text)
 
         args << "-v" << voiceToken << "-s" << QString::number(speed) << "-p" << QString::number(pitch);
         args << toSpeak;
+        fallbackArgs << toSpeak;
     }
 
     m_ttsProcess.start(m_ttsBinary, args);
-    return true;
+    if (m_ttsProcess.waitForStarted(450)) {
+        return true;
+    }
+
+    appendAudit("TTS start failed with styled args, retrying fallback");
+    m_ttsProcess.start(m_ttsBinary, fallbackArgs);
+    if (m_ttsProcess.waitForStarted(450)) {
+        return true;
+    }
+
+    appendAudit("TTS failed: " + m_ttsProcess.errorString());
+    return false;
 }
 
 void AppController::stopSpeaking()

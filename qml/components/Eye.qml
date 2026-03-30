@@ -7,6 +7,8 @@ Item {
     property real focusX: 0.0
     property real focusY: 0.0
     property real squint: 0.0
+    property real pupilScale: 1.0
+    property real glintOpacity: 0.6
     property bool warning: false
     property color accentColor: root.warning ? Colors.warning : Colors.accent
 
@@ -33,9 +35,11 @@ Item {
             color: root.warning ? Colors.warning : Colors.accentStrong
             x: (parent.width - width) / 2 + root.focusX * 18
             y: (parent.height - height) / 2 + root.focusY * 8
+            scale: root.pupilScale
             antialiasing: true
             Behavior on x { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
             Behavior on y { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+            Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         }
 
         Rectangle {
@@ -45,7 +49,8 @@ Item {
             x: pupil.x + 5
             y: pupil.y + 4
             color: "#FFFFFF"
-            opacity: 0.6
+            opacity: root.glintOpacity
+            Behavior on opacity { NumberAnimation { duration: 120 } }
         }
 
         Rectangle {

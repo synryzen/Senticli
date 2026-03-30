@@ -11,6 +11,8 @@ Item {
 
     property real blinkFactor: 1.0
     property real driftX: 0.0
+    property real moodSwing: 0.0
+    property real idleBob: 0.0
     property bool isWarning: root.faceState === "warning"
     property bool isThinking: root.faceState === "thinking"
     property bool isListening: root.faceState === "listening" || root.micActive
@@ -42,11 +44,11 @@ Item {
         color: "transparent"
         border.width: 2
         border.color: root.expressionAccent
-        opacity: root.isListening ? 0.9 : (root.isSpeaking ? 0.75 : 0.45)
+        opacity: root.isListening ? 0.92 : (root.isSpeaking ? 0.82 : 0.52)
 
         SequentialAnimation on scale {
             loops: Animation.Infinite
-            running: root.isListening || root.isSpeaking
+            running: true
             NumberAnimation { from: 0.97; to: 1.035; duration: root.isSpeaking ? 520 : 880; easing.type: Easing.InOutQuad }
             NumberAnimation { from: 1.035; to: 0.97; duration: root.isSpeaking ? 520 : 880; easing.type: Easing.InOutQuad }
         }
@@ -62,9 +64,13 @@ Item {
         color: Colors.panelBg
         border.width: 1
         border.color: root.expressionAccent
-        y: root.isSpeaking ? -2 : 0
+        y: (root.isSpeaking ? -4 : (root.isListening ? -2 : 0)) + root.idleBob
+        scale: root.isSpeaking ? 1.014 : 1.0
+        rotation: root.isConfused ? -1.8 : (root.isHappy ? 0.8 : 0)
 
         Behavior on y { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        Behavior on rotation { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
         Behavior on border.color { ColorAnimation { duration: 180 } }
 
         Column {
@@ -81,7 +87,7 @@ Item {
                     radius: 4
                     color: root.expressionAccent
                     opacity: 0.9
-                    rotation: root.isConfused ? -15 : (root.isWarning ? -6 : (root.isHappy ? -10 : -2))
+                    rotation: root.isConfused ? -22 : (root.isWarning ? -14 : (root.isHappy ? -16 : (-3 + root.moodSwing * 6)))
                     y: root.isThinking ? -4 : 0
                     Behavior on rotation { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
                 }
@@ -92,7 +98,7 @@ Item {
                     radius: 4
                     color: root.expressionAccent
                     opacity: 0.9
-                    rotation: root.isConfused ? 6 : (root.isWarning ? 12 : (root.isHappy ? 10 : 2))
+                    rotation: root.isConfused ? 10 : (root.isWarning ? 18 : (root.isHappy ? 16 : (3 - root.moodSwing * 6)))
                     y: root.isThinking ? -6 : 0
                     Behavior on rotation { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
                 }
@@ -103,19 +109,23 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
 
                 Eye {
-                    openness: (root.isWarning ? 0.56 : (root.isThinking ? 0.66 : (root.isHappy ? 0.92 : 0.96))) * root.blinkFactor
-                    focusX: root.isThinking ? -0.32 : (root.isListening ? 0.18 : root.driftX)
-                    focusY: root.isThinking ? -0.16 : (root.isSpeaking ? 0.05 : 0.0)
-                    squint: root.isWarning ? 0.48 : (root.isSpeaking ? 0.14 : 0.0)
+                    openness: (root.isWarning ? 0.48 : (root.isThinking ? 0.64 : (root.isHappy ? 0.9 : 0.94))) * root.blinkFactor
+                    focusX: root.isThinking ? -0.34 : (root.isListening ? 0.22 : (root.driftX + root.moodSwing * 0.14))
+                    focusY: root.isThinking ? -0.2 : (root.isSpeaking ? 0.07 : (root.isHappy ? -0.04 : 0.0))
+                    squint: root.isWarning ? 0.58 : (root.isSpeaking ? 0.2 : (root.isHappy ? 0.08 : 0.0))
+                    pupilScale: root.isWarning ? 0.86 : (root.isSpeaking ? 1.08 : 1.0)
+                    glintOpacity: root.isWarning ? 0.35 : (root.isHappy ? 0.85 : 0.62)
                     warning: root.isWarning
                     accentColor: root.expressionAccent
                 }
 
                 Eye {
-                    openness: (root.isWarning ? 0.56 : (root.isThinking ? 0.66 : (root.isHappy ? 0.92 : 0.96))) * root.blinkFactor
-                    focusX: root.isThinking ? 0.32 : (root.isListening ? -0.18 : -root.driftX)
-                    focusY: root.isThinking ? -0.16 : (root.isSpeaking ? 0.05 : 0.0)
-                    squint: root.isWarning ? 0.48 : (root.isSpeaking ? 0.14 : 0.0)
+                    openness: (root.isWarning ? 0.48 : (root.isThinking ? 0.64 : (root.isHappy ? 0.9 : 0.94))) * root.blinkFactor
+                    focusX: root.isThinking ? 0.34 : (root.isListening ? -0.22 : (-root.driftX + root.moodSwing * 0.14))
+                    focusY: root.isThinking ? -0.2 : (root.isSpeaking ? 0.07 : (root.isHappy ? -0.04 : 0.0))
+                    squint: root.isWarning ? 0.58 : (root.isSpeaking ? 0.2 : (root.isHappy ? 0.08 : 0.0))
+                    pupilScale: root.isWarning ? 0.86 : (root.isSpeaking ? 1.08 : 1.0)
+                    glintOpacity: root.isWarning ? 0.35 : (root.isHappy ? 0.85 : 0.62)
                     warning: root.isWarning
                     accentColor: root.expressionAccent
                 }
@@ -126,6 +136,30 @@ Item {
                 stateName: root.faceState
                 speaking: root.isSpeaking
             }
+        }
+
+        Rectangle {
+            width: 24
+            height: 12
+            radius: 8
+            color: root.isHappy ? "#6AE6B1" : (root.isWarning ? "#F1A08D" : "#FFFFFF")
+            opacity: root.isHappy ? 0.22 : (root.isWarning ? 0.18 : 0.0)
+            anchors.left: parent.left
+            anchors.leftMargin: 112
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 56
+        }
+
+        Rectangle {
+            width: 24
+            height: 12
+            radius: 8
+            color: root.isHappy ? "#6AE6B1" : (root.isWarning ? "#F1A08D" : "#FFFFFF")
+            opacity: root.isHappy ? 0.22 : (root.isWarning ? 0.18 : 0.0)
+            anchors.right: parent.right
+            anchors.rightMargin: 112
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 56
         }
     }
 
@@ -140,10 +174,14 @@ Item {
     }
 
     Timer {
-        interval: 3200
+        id: blinkTimer
+        interval: 2200
         running: true
         repeat: true
-        onTriggered: blink.restart()
+        onTriggered: {
+            blink.restart()
+            blinkTimer.interval = 1500 + Math.random() * 1800
+        }
     }
 
     Timer {
@@ -155,8 +193,22 @@ Item {
                 root.driftX = 0
                 return
             }
-            root.driftX = (Math.random() * 0.5) - 0.25
+            root.driftX = (Math.random() * 0.9) - 0.45
         }
+    }
+
+    SequentialAnimation on moodSwing {
+        loops: Animation.Infinite
+        running: true
+        NumberAnimation { from: -1.0; to: 1.0; duration: root.isSpeaking ? 620 : 1200; easing.type: Easing.InOutSine }
+        NumberAnimation { from: 1.0; to: -1.0; duration: root.isSpeaking ? 620 : 1200; easing.type: Easing.InOutSine }
+    }
+
+    SequentialAnimation on idleBob {
+        loops: Animation.Infinite
+        running: !root.isSpeaking
+        NumberAnimation { from: -1.0; to: 1.3; duration: 1500; easing.type: Easing.InOutSine }
+        NumberAnimation { from: 1.3; to: -1.0; duration: 1500; easing.type: Easing.InOutSine }
     }
 
     SequentialAnimation {
