@@ -34,6 +34,12 @@ class AppController : public QObject
     Q_PROPERTY(QString smoothingProfile READ smoothingProfile WRITE setSmoothingProfile NOTIFY smoothingProfileChanged)
     Q_PROPERTY(QStringList smoothingProfiles READ smoothingProfiles CONSTANT)
     Q_PROPERTY(int tokenRate READ tokenRate WRITE setTokenRate NOTIFY tokenRateChanged)
+    Q_PROPERTY(QString personality READ personality WRITE setPersonality NOTIFY personalityChanged)
+    Q_PROPERTY(QStringList personalities READ personalities CONSTANT)
+    Q_PROPERTY(QString gender READ gender WRITE setGender NOTIFY genderChanged)
+    Q_PROPERTY(QStringList genders READ genders CONSTANT)
+    Q_PROPERTY(QString voiceStyle READ voiceStyle WRITE setVoiceStyle NOTIFY voiceStyleChanged)
+    Q_PROPERTY(QStringList voiceStyles READ voiceStyles CONSTANT)
     Q_PROPERTY(bool ttsEnabled READ ttsEnabled WRITE setTtsEnabled NOTIFY ttsEnabledChanged)
     Q_PROPERTY(bool memoryEnabled READ memoryEnabled WRITE setMemoryEnabled NOTIFY memoryEnabledChanged)
     Q_PROPERTY(QStringList grantedFolders READ grantedFolders NOTIFY grantedFoldersChanged)
@@ -69,6 +75,12 @@ public:
     QString smoothingProfile() const;
     QStringList smoothingProfiles() const;
     int tokenRate() const;
+    QString personality() const;
+    QStringList personalities() const;
+    QString gender() const;
+    QStringList genders() const;
+    QString voiceStyle() const;
+    QStringList voiceStyles() const;
     bool ttsEnabled() const;
     bool memoryEnabled() const;
     QStringList grantedFolders() const;
@@ -97,6 +109,9 @@ public:
     Q_INVOKABLE void setSelectedModel(const QString &model);
     Q_INVOKABLE void setSmoothingProfile(const QString &profile);
     Q_INVOKABLE void setTokenRate(int rate);
+    Q_INVOKABLE void setPersonality(const QString &personality);
+    Q_INVOKABLE void setGender(const QString &gender);
+    Q_INVOKABLE void setVoiceStyle(const QString &voiceStyle);
     Q_INVOKABLE void setTtsEnabled(bool enabled);
     Q_INVOKABLE void setMemoryEnabled(bool enabled);
     Q_INVOKABLE void refreshModels();
@@ -123,6 +138,9 @@ signals:
     void modelStatusChanged();
     void smoothingProfileChanged();
     void tokenRateChanged();
+    void personalityChanged();
+    void genderChanged();
+    void voiceStyleChanged();
     void ttsEnabledChanged();
     void memoryEnabledChanged();
     void grantedFoldersChanged();
@@ -171,6 +189,7 @@ private:
     void finalizeAssistantState();
     void requestRemoteCompletion(const QString &text);
     QString extractContentFromChoice(const QJsonObject &choiceObject) const;
+    QString systemPersonaPrompt() const;
     void postAssistant(const QString &text, const QString &kind = "assistant");
     void requestApproval(const QString &prompt, const QString &actionKind, const QString &payload);
     void runShellCommandPreview(const QString &command, bool approved);
@@ -198,8 +217,11 @@ private:
     QStringList m_availableModels = {"local-prototype"};
     QString m_selectedModel = "local-prototype";
     QString m_modelStatus = "Prototype mode (local rules)";
-    QString m_smoothingProfile = "Balanced";
-    int m_tokenRate = 100;
+    QString m_smoothingProfile = "Terminal";
+    int m_tokenRate = 180;
+    QString m_personality = "Helpful";
+    QString m_gender = "Neutral";
+    QString m_voiceStyle = "Default";
     bool m_ttsEnabled = false;
     bool m_memoryEnabled = true;
     bool m_setupComplete = false;

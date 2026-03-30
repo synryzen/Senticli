@@ -16,8 +16,14 @@ Rectangle {
     property string selectedModel: "local-prototype"
     property string modelStatus: ""
     property string smoothingProfile: "Balanced"
-    property var smoothingProfiles: ["Cinematic", "Human", "Balanced", "Terminal"]
+    property var smoothingProfiles: ["Instant", "Terminal", "Balanced", "Human", "Cinematic"]
     property int tokenRate: 100
+    property string personality: "Helpful"
+    property var personalities: ["Helpful", "Professional", "Witty", "Teacher", "Hacker", "Calm"]
+    property string gender: "Neutral"
+    property var genders: ["Neutral", "Male", "Female"]
+    property string voiceStyle: "Default"
+    property var voiceStyles: ["Default", "Soft", "Bright", "Narrator"]
     property bool ttsEnabled: false
     property bool memoryEnabled: true
     property var grantedFolders: []
@@ -37,6 +43,9 @@ Rectangle {
     signal modelSelected(string modelName)
     signal smoothingSelected(string profile)
     signal tokenRateSelected(int rate)
+    signal personalitySelected(string personality)
+    signal genderSelected(string gender)
+    signal voiceStyleSelected(string voiceStyle)
     signal ttsToggledRequested(bool enabled)
     signal memoryToggledRequested(bool enabled)
     signal addFolderRequested(string folder)
@@ -393,11 +402,63 @@ Rectangle {
 
                             Label {
                                 Layout.fillWidth: true
-                                text: "Cinematic: smoothest, Human: slow, Balanced: default, Terminal: fast"
+                                text: "Instant: raw speed, Terminal: fast, Balanced: default, Human/Cinematic: smoother"
                                 color: Colors.textSecondary
                                 elide: Label.ElideRight
                                 font.family: Typography.monoFamily
                                 font.pixelSize: Typography.smallSize
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Label {
+                                text: "Persona"
+                                color: Colors.textSecondary
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            ComboBox {
+                                id: personalityCombo
+                                Layout.preferredWidth: 180
+                                model: root.personalities
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                                onActivated: root.personalitySelected(currentText)
+                            }
+
+                            Label {
+                                text: "Voice Gender"
+                                color: Colors.textSecondary
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            ComboBox {
+                                id: genderCombo
+                                Layout.preferredWidth: 140
+                                model: root.genders
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                                onActivated: root.genderSelected(currentText)
+                            }
+
+                            Label {
+                                text: "Voice Style"
+                                color: Colors.textSecondary
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            ComboBox {
+                                id: voiceStyleCombo
+                                Layout.preferredWidth: 160
+                                model: root.voiceStyles
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                                onActivated: root.voiceStyleSelected(currentText)
                             }
                         }
 
@@ -415,7 +476,7 @@ Rectangle {
                                 id: tokenRateSlider
                                 Layout.fillWidth: true
                                 from: 20
-                                to: 300
+                                to: 600
                                 stepSize: 5
                                 live: false
                                 onMoved: root.tokenRateSelected(Math.round(value))
@@ -639,6 +700,27 @@ Rectangle {
         }
     }
 
+    onPersonalityChanged: {
+        const idx = personalityCombo.find(personality)
+        if (idx >= 0) {
+            personalityCombo.currentIndex = idx
+        }
+    }
+
+    onGenderChanged: {
+        const idx = genderCombo.find(gender)
+        if (idx >= 0) {
+            genderCombo.currentIndex = idx
+        }
+    }
+
+    onVoiceStyleChanged: {
+        const idx = voiceStyleCombo.find(voiceStyle)
+        if (idx >= 0) {
+            voiceStyleCombo.currentIndex = idx
+        }
+    }
+
     onTokenRateChanged: {
         tokenRateSlider.value = tokenRate
     }
@@ -677,6 +759,21 @@ Rectangle {
         idx = smoothingCombo.find(smoothingProfile)
         if (idx >= 0) {
             smoothingCombo.currentIndex = idx
+        }
+
+        idx = personalityCombo.find(personality)
+        if (idx >= 0) {
+            personalityCombo.currentIndex = idx
+        }
+
+        idx = genderCombo.find(gender)
+        if (idx >= 0) {
+            genderCombo.currentIndex = idx
+        }
+
+        idx = voiceStyleCombo.find(voiceStyle)
+        if (idx >= 0) {
+            voiceStyleCombo.currentIndex = idx
         }
     }
 }

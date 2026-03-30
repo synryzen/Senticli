@@ -55,6 +55,7 @@ AppController::AppController(QObject *parent)
     });
 
     loadSettings();
+    m_streamFlushTimer.setInterval(flushIntervalForProfile());
     loadAuditEntries();
     loadProjectMemory();
 
@@ -155,12 +156,42 @@ QString AppController::smoothingProfile() const
 
 QStringList AppController::smoothingProfiles() const
 {
-    return {"Cinematic", "Human", "Balanced", "Terminal"};
+    return {"Instant", "Terminal", "Balanced", "Human", "Cinematic"};
 }
 
 int AppController::tokenRate() const
 {
     return m_tokenRate;
+}
+
+QString AppController::personality() const
+{
+    return m_personality;
+}
+
+QStringList AppController::personalities() const
+{
+    return {"Helpful", "Professional", "Witty", "Teacher", "Hacker", "Calm"};
+}
+
+QString AppController::gender() const
+{
+    return m_gender;
+}
+
+QStringList AppController::genders() const
+{
+    return {"Neutral", "Male", "Female"};
+}
+
+QString AppController::voiceStyle() const
+{
+    return m_voiceStyle;
+}
+
+QStringList AppController::voiceStyles() const
+{
+    return {"Default", "Soft", "Bright", "Narrator"};
 }
 
 bool AppController::ttsEnabled() const
@@ -489,21 +520,31 @@ void AppController::deleteProfile(const QString &profileName)
 void AppController::setSmoothingProfile(const QString &profile)
 {
     const QString trimmed = profile.trimmed();
-    if (!smoothingProfiles().contains(trimmed) || m_smoothingProfile == trimmed) {
+    QString resolved;
+    for (const QString &candidate : smoothingProfiles()) {
+        if (candidate.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            resolved = candidate;
+            break;
+        }
+    }
+    if (resolved.isEmpty() || m_smoothingProfile == resolved) {
         return;
     }
 
-    m_smoothingProfile = trimmed;
+    m_smoothingProfile = resolved;
     m_streamFlushTimer.setInterval(flushIntervalForProfile());
     emit smoothingProfileChanged();
     setModelStatus(QString("Smoothing: %1").arg(m_smoothingProfile));
     appendAudit("Smoothing profile: " + m_smoothingProfile);
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
     saveSettings();
 }
 
 void AppController::setTokenRate(int rate)
 {
-    const int clamped = qBound(20, rate, 300);
+    const int clamped = qBound(20, rate, 600);
     if (m_tokenRate == clamped) {
         return;
     }
@@ -513,6 +554,81 @@ void AppController::setTokenRate(int rate)
     emit tokenRateChanged();
     setModelStatus(QString("Token rate: %1%").arg(m_tokenRate));
     appendAudit(QString("Token rate set: %1").arg(m_tokenRate));
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
+void AppController::setPersonality(const QString &personality)
+{
+    const QString trimmed = personality.trimmed();
+    QString resolved;
+    for (const QString &candidate : personalities()) {
+        if (candidate.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            resolved = candidate;
+            break;
+        }
+    }
+    if (resolved.isEmpty() || m_personality == resolved) {
+        return;
+    }
+
+    m_personality = resolved;
+    emit personalityChanged();
+    setModelStatus(QString("Personality: %1").arg(m_personality));
+    appendAudit("Personality set: " + m_personality);
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
+void AppController::setGender(const QString &gender)
+{
+    const QString trimmed = gender.trimmed();
+    QString resolved;
+    for (const QString &candidate : genders()) {
+        if (candidate.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            resolved = candidate;
+            break;
+        }
+    }
+    if (resolved.isEmpty() || m_gender == resolved) {
+        return;
+    }
+
+    m_gender = resolved;
+    emit genderChanged();
+    setModelStatus(QString("Gender voice target: %1").arg(m_gender));
+    appendAudit("Gender set: " + m_gender);
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
+void AppController::setVoiceStyle(const QString &voiceStyle)
+{
+    const QString trimmed = voiceStyle.trimmed();
+    QString resolved;
+    for (const QString &candidate : voiceStyles()) {
+        if (candidate.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            resolved = candidate;
+            break;
+        }
+    }
+    if (resolved.isEmpty() || m_voiceStyle == resolved) {
+        return;
+    }
+
+    m_voiceStyle = resolved;
+    emit voiceStyleChanged();
+    setModelStatus(QString("Voice style: %1").arg(m_voiceStyle));
+    appendAudit("Voice style set: " + m_voiceStyle);
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
     saveSettings();
 }
 
@@ -870,6 +986,12 @@ void AppController::queueStreamText(const QString &text)
         return;
     }
 
+    if (m_smoothingProfile == "Instant") {
+        m_streamAccumulatedText += text;
+        updateStreamingMessageDisplay(true);
+        return;
+    }
+
     m_streamPendingText += text;
     if (!m_streamFlushTimer.isActive()) {
         m_streamFlushTimer.start();
@@ -1044,8 +1166,50 @@ void AppController::speakText(const QString &text)
 
     QStringList args;
     if (m_ttsBinary.endsWith("spd-say")) {
+        QString voiceToken = "neutral";
+        if (m_gender == "Male") {
+            voiceToken = "male1";
+        } else if (m_gender == "Female") {
+            voiceToken = "female1";
+        }
+
+        int rate = 0;
+        int pitch = 0;
+        if (m_voiceStyle == "Soft") {
+            rate = -35;
+            pitch = -25;
+        } else if (m_voiceStyle == "Bright") {
+            rate = 20;
+            pitch = 20;
+        } else if (m_voiceStyle == "Narrator") {
+            rate = -25;
+            pitch = -8;
+        }
+
+        args << "-t" << voiceToken << "-r" << QString::number(rate) << "-p" << QString::number(pitch);
         args << toSpeak;
     } else {
+        QString voiceToken = "en";
+        if (m_gender == "Male") {
+            voiceToken = "en+m3";
+        } else if (m_gender == "Female") {
+            voiceToken = "en+f3";
+        }
+
+        int speed = 175;
+        int pitch = 50;
+        if (m_voiceStyle == "Soft") {
+            speed = 155;
+            pitch = 36;
+        } else if (m_voiceStyle == "Bright") {
+            speed = 195;
+            pitch = 68;
+        } else if (m_voiceStyle == "Narrator") {
+            speed = 145;
+            pitch = 44;
+        }
+
+        args << "-v" << voiceToken << "-s" << QString::number(speed) << "-p" << QString::number(pitch);
         args << toSpeak;
     }
 
@@ -1118,10 +1282,22 @@ void AppController::loadSettings()
 
     m_smoothingProfile = settings.value("ai/smoothingProfile", m_smoothingProfile).toString();
     if (!smoothingProfiles().contains(m_smoothingProfile)) {
-        m_smoothingProfile = "Balanced";
+        m_smoothingProfile = "Terminal";
     }
 
-    m_tokenRate = qBound(20, settings.value("ai/tokenRate", m_tokenRate).toInt(), 300);
+    m_tokenRate = qBound(20, settings.value("ai/tokenRate", m_tokenRate).toInt(), 600);
+    m_personality = settings.value("ai/personality", m_personality).toString();
+    if (!personalities().contains(m_personality)) {
+        m_personality = "Helpful";
+    }
+    m_gender = settings.value("ai/gender", m_gender).toString();
+    if (!genders().contains(m_gender)) {
+        m_gender = "Neutral";
+    }
+    m_voiceStyle = settings.value("voice/style", m_voiceStyle).toString();
+    if (!voiceStyles().contains(m_voiceStyle)) {
+        m_voiceStyle = "Default";
+    }
     m_ttsEnabled = settings.value("voice/ttsEnabled", m_ttsEnabled).toBool();
     m_memoryEnabled = settings.value("memory/enabled", m_memoryEnabled).toBool();
     m_setupComplete = settings.value("ui/setupComplete", false).toBool();
@@ -1154,7 +1330,10 @@ void AppController::saveSettings() const
     settings.setValue("ai/availableModels", m_availableModels);
     settings.setValue("ai/smoothingProfile", m_smoothingProfile);
     settings.setValue("ai/tokenRate", m_tokenRate);
+    settings.setValue("ai/personality", m_personality);
+    settings.setValue("ai/gender", m_gender);
     settings.setValue("voice/ttsEnabled", m_ttsEnabled);
+    settings.setValue("voice/style", m_voiceStyle);
     settings.setValue("memory/enabled", m_memoryEnabled);
     settings.setValue("permissions/grantedFolders", m_grantedFolders);
     settings.setValue("ui/setupComplete", m_setupComplete);
@@ -1306,6 +1485,11 @@ void AppController::handleInput(const QString &text)
             "/apikey <token> (or /apikey clear)\n"
             "/models\n"
             "/model <id>\n"
+            "/speed <Instant|Terminal|Balanced|Human|Cinematic>\n"
+            "/personality <Helpful|Professional|Witty|Teacher|Hacker|Calm>\n"
+            "/gender <Neutral|Male|Female>\n"
+            "/voice-style <Default|Soft|Bright|Narrator>\n"
+            "/voices\n"
             "/test\n"
             "/run <command>\n"
             "/cancel\n"
@@ -1326,6 +1510,13 @@ void AppController::handleInput(const QString &text)
 
     if (lowered == "/models") {
         refreshModels();
+        return;
+    }
+
+    if (lowered == "/voices") {
+        postAssistant(
+            QString("Voice options:\nGender: %1\nStyle: %2")
+                .arg(genders().join(", "), voiceStyles().join(", ")));
         return;
     }
 
@@ -1420,6 +1611,26 @@ void AppController::handleInput(const QString &text)
 
     if (lowered.startsWith("/model ")) {
         setSelectedModel(text.mid(7).trimmed());
+        return;
+    }
+
+    if (lowered.startsWith("/speed ")) {
+        setSmoothingProfile(text.mid(7).trimmed());
+        return;
+    }
+
+    if (lowered.startsWith("/personality ")) {
+        setPersonality(text.mid(13).trimmed());
+        return;
+    }
+
+    if (lowered.startsWith("/gender ")) {
+        setGender(text.mid(8).trimmed());
+        return;
+    }
+
+    if (lowered.startsWith("/voice-style ")) {
+        setVoiceStyle(text.mid(13).trimmed());
         return;
     }
 
@@ -1562,7 +1773,7 @@ void AppController::requestRemoteCompletion(const QString &text)
     QJsonArray messages;
     messages.append(QJsonObject{
         {"role", "system"},
-        {"content", "You are Senticli, a local Linux terminal companion. Keep replies practical and concise."},
+        {"content", systemPersonaPrompt()},
     });
 
     const QString memoryContext = projectMemoryContext();
@@ -1769,6 +1980,29 @@ QString AppController::extractContentFromChoice(const QJsonObject &choiceObject)
     return {};
 }
 
+QString AppController::systemPersonaPrompt() const
+{
+    QString tone = "practical, concise, and helpful";
+    if (m_personality == "Professional") {
+        tone = "professional, precise, and concise";
+    } else if (m_personality == "Witty") {
+        tone = "smart, lightly witty, and concise";
+    } else if (m_personality == "Teacher") {
+        tone = "clear, step-by-step, and encouraging";
+    } else if (m_personality == "Hacker") {
+        tone = "technical, direct, and terminal-native";
+    } else if (m_personality == "Calm") {
+        tone = "calm, reassuring, and concise";
+    }
+
+    return QString(
+               "You are Senticli, a local Linux terminal companion. "
+               "Keep replies %1. "
+               "Current presentation preferences: personality=%2, voice-gender=%3, voice-style=%4. "
+               "When suggesting actions, be explicit and safe.")
+        .arg(tone, m_personality, m_gender, m_voiceStyle);
+}
+
 void AppController::postAssistant(const QString &text, const QString &kind)
 {
     m_messageModel.addMessage("assistant", text, kind);
@@ -1934,6 +2168,11 @@ void AppController::loadProfile(const QString &profileName)
         settings.value(base + "modelsEndpoint", m_modelsEndpoint).toString());
     const QString profileApiKey = settings.value(base + "apiKey", m_apiKey).toString();
     const QString profileModel = settings.value(base + "selectedModel", m_selectedModel).toString().trimmed();
+    const QString profileSmoothing = settings.value(base + "smoothingProfile", m_smoothingProfile).toString();
+    const int profileTokenRate = qBound(20, settings.value(base + "tokenRate", m_tokenRate).toInt(), 600);
+    const QString profilePersonality = settings.value(base + "personality", m_personality).toString();
+    const QString profileGender = settings.value(base + "gender", m_gender).toString();
+    const QString profileVoiceStyle = settings.value(base + "voiceStyle", m_voiceStyle).toString();
 
     if (providers().contains(profileProvider) && m_provider != profileProvider) {
         m_provider = profileProvider;
@@ -1964,6 +2203,33 @@ void AppController::loadProfile(const QString &profileName)
         emit selectedModelChanged();
         emit modelNameChanged();
     }
+
+    if (smoothingProfiles().contains(profileSmoothing) && m_smoothingProfile != profileSmoothing) {
+        m_smoothingProfile = profileSmoothing;
+        m_streamFlushTimer.setInterval(flushIntervalForProfile());
+        emit smoothingProfileChanged();
+    }
+
+    if (m_tokenRate != profileTokenRate) {
+        m_tokenRate = profileTokenRate;
+        m_streamFlushTimer.setInterval(flushIntervalForProfile());
+        emit tokenRateChanged();
+    }
+
+    if (personalities().contains(profilePersonality) && m_personality != profilePersonality) {
+        m_personality = profilePersonality;
+        emit personalityChanged();
+    }
+
+    if (genders().contains(profileGender) && m_gender != profileGender) {
+        m_gender = profileGender;
+        emit genderChanged();
+    }
+
+    if (voiceStyles().contains(profileVoiceStyle) && m_voiceStyle != profileVoiceStyle) {
+        m_voiceStyle = profileVoiceStyle;
+        emit voiceStyleChanged();
+    }
 }
 
 void AppController::saveProfileToSettings(const QString &profileName) const
@@ -1980,10 +2246,19 @@ void AppController::saveProfileToSettings(const QString &profileName) const
     settings.setValue(base + "modelsEndpoint", m_modelsEndpoint);
     settings.setValue(base + "apiKey", m_apiKey);
     settings.setValue(base + "selectedModel", m_selectedModel);
+    settings.setValue(base + "smoothingProfile", m_smoothingProfile);
+    settings.setValue(base + "tokenRate", m_tokenRate);
+    settings.setValue(base + "personality", m_personality);
+    settings.setValue(base + "gender", m_gender);
+    settings.setValue(base + "voiceStyle", m_voiceStyle);
 }
 
 int AppController::chunkSizeForBacklog(int backlog) const
 {
+    if (m_smoothingProfile == "Instant") {
+        return qMax(1, backlog);
+    }
+
     int base = 2;
 
     if (m_smoothingProfile == "Cinematic") {
@@ -2034,6 +2309,10 @@ int AppController::chunkSizeForBacklog(int backlog) const
 
 int AppController::flushIntervalForProfile() const
 {
+    if (m_smoothingProfile == "Instant") {
+        return 2;
+    }
+
     int base = 24;
     if (m_smoothingProfile == "Cinematic") {
         base = 54;

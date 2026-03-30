@@ -93,6 +93,12 @@ ApplicationWindow {
             smoothingProfile: backend.smoothingProfile
             smoothingProfiles: backend.smoothingProfiles
             tokenRate: backend.tokenRate
+            personality: backend.personality
+            personalities: backend.personalities
+            gender: backend.gender
+            genders: backend.genders
+            voiceStyle: backend.voiceStyle
+            voiceStyles: backend.voiceStyles
             ttsEnabled: backend.ttsEnabled
             memoryEnabled: backend.memoryEnabled
             grantedFolders: backend.grantedFolders
@@ -134,6 +140,15 @@ ApplicationWindow {
             }
             onTokenRateSelected: function(rate) {
                 backend.setTokenRate(rate)
+            }
+            onPersonalitySelected: function(value) {
+                backend.setPersonality(value)
+            }
+            onGenderSelected: function(value) {
+                backend.setGender(value)
+            }
+            onVoiceStyleSelected: function(value) {
+                backend.setVoiceStyle(value)
             }
             onTtsToggledRequested: function(enabled) {
                 backend.setTtsEnabled(enabled)

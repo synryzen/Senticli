@@ -21,6 +21,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Streaming token output for remote model responses (live incremental text)
 - Typing cursor during stream and cancel button for in-flight responses
 - Adaptive stream smoothing to reduce bursty chunk jumps
+- `Instant` stream mode for lowest-latency output on powerful hardware
 - Dedicated AI Settings panel with:
   - saved connection profiles (save/load/delete presets)
   - provider + endpoint controls
@@ -28,7 +29,9 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - optional API key field
   - model picker + refresh
   - manual model ID entry (type and set any model name)
-  - smoothing + token-rate controls
+  - speed mode + token-rate controls
+  - personality preset selector
+  - voice gender + voice style selectors
   - voice and memory toggles
   - granted folder permissions manager
   - audit log viewer/clear
@@ -49,6 +52,11 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - `/test`
   - `/cancel`
   - `/model <id>`
+  - `/speed <Instant|Terminal|Balanced|Human|Cinematic>`
+  - `/personality <Helpful|Professional|Witty|Teacher|Hacker|Calm>`
+  - `/gender <Neutral|Male|Female>`
+  - `/voice-style <Default|Soft|Bright|Narrator>`
+  - `/voices`
   - `/grant <folder>`
   - `/revoke <folder>`
   - `/remember <note>`
@@ -122,7 +130,7 @@ cmake --build build
 4. If your provider exposes models on a custom path, set `Models Endpoint` override
 5. Click `Refresh`, pick a model, then click `Use`
 6. If your model does not appear, type the exact model ID and click `Set Typed Model`
-7. Pick smoothing profile (`Cinematic`, `Human`, `Balanced`, or `Terminal`)
+7. Pick speed profile (`Instant`, `Terminal`, `Balanced`, `Human`, or `Cinematic`)
 8. Send a normal message (non-slash command) to route it to that model
 9. Save the setup as a profile so you can switch quickly later
 
@@ -134,6 +142,10 @@ You can do the same via commands:
 /apikey your-token-here
 /models
 /model your-model-id
+/speed instant
+/personality teacher
+/gender female
+/voice-style narrator
 /profile-save my-cloudflare-route
 ```
 
