@@ -23,6 +23,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Adaptive stream smoothing to reduce bursty chunk jumps
 - Dedicated AI Settings panel with:
   - provider + endpoint controls
+  - optional models endpoint override
   - optional API key field
   - model picker + refresh
   - manual model ID entry (type and set any model name)
@@ -38,6 +39,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - `/help`
   - `/provider <Custom|LM Studio|Ollama>`
   - `/endpoint <url>`
+  - `/models-endpoint <url|auto>`
   - `/models`
   - `/test`
   - `/cancel`
@@ -112,15 +114,17 @@ cmake --build build
 1. Click `AI Settings`
 2. Set endpoint to something like `192.168.1.220/v1/chat/completions`
 3. If needed, set API key in AI Settings
-4. Click `Refresh`, pick a model, then click `Use`
-5. If your model does not appear, type the exact model ID and click `Set Typed Model`
-6. Pick smoothing profile (`Cinematic`, `Human`, `Balanced`, or `Terminal`)
-7. Send a normal message (non-slash command) to route it to that model
+4. If your provider exposes models on a custom path, set `Models Endpoint` override
+5. Click `Refresh`, pick a model, then click `Use`
+6. If your model does not appear, type the exact model ID and click `Set Typed Model`
+7. Pick smoothing profile (`Cinematic`, `Human`, `Balanced`, or `Terminal`)
+8. Send a normal message (non-slash command) to route it to that model
 
 You can do the same via commands:
 
 ```bash
 /endpoint 192.168.1.220/v1/chat/completions
+/models-endpoint https://lm.msidragon.com/v1/models
 /apikey your-token-here
 /models
 /model your-model-id

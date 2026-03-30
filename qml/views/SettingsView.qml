@@ -8,6 +8,7 @@ Rectangle {
     property string provider: "Custom"
     property var providers: ["Custom", "LM Studio", "Ollama"]
     property string endpoint: ""
+    property string modelsEndpoint: ""
     property string apiKey: ""
     property var availableModels: []
     property string selectedModel: "local-prototype"
@@ -24,6 +25,7 @@ Rectangle {
 
     signal providerSelected(string provider)
     signal endpointSubmitted(string endpoint)
+    signal modelsEndpointSubmitted(string modelsEndpoint)
     signal apiKeySubmitted(string apiKey)
     signal refreshRequested()
     signal testRequested()
@@ -137,6 +139,36 @@ Rectangle {
                                 text: "Test"
                                 enabled: !root.streamingActive
                                 onClicked: root.testRequested()
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            TextField {
+                                id: modelsEndpointField
+                                Layout.fillWidth: true
+                                placeholderText: "Optional models endpoint override (auto uses /v1/models)"
+                                font.family: Typography.monoFamily
+                                font.pixelSize: Typography.smallSize
+                                onAccepted: root.modelsEndpointSubmitted(text)
+                            }
+
+                            Button {
+                                text: "Save Models URL"
+                                onClicked: root.modelsEndpointSubmitted(modelsEndpointField.text)
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            Button {
+                                text: "Auto"
+                                onClicked: {
+                                    modelsEndpointField.text = ""
+                                    root.modelsEndpointSubmitted("")
+                                }
                                 font.family: Typography.uiFamily
                                 font.pixelSize: Typography.smallSize
                             }
@@ -509,6 +541,10 @@ Rectangle {
         endpointField.text = endpoint
     }
 
+    onModelsEndpointChanged: {
+        modelsEndpointField.text = modelsEndpoint
+    }
+
     onApiKeyChanged: {
         apiKeyField.text = apiKey
     }
@@ -541,6 +577,7 @@ Rectangle {
 
     Component.onCompleted: {
         endpointField.text = endpoint
+        modelsEndpointField.text = modelsEndpoint
         apiKeyField.text = apiKey
         tokenRateSlider.value = tokenRate
         ttsSwitch.checked = ttsEnabled

@@ -8,6 +8,7 @@ Rectangle {
     property string provider: "Custom"
     property var providers: ["Custom", "LM Studio", "Ollama"]
     property string endpoint: ""
+    property string modelsEndpoint: ""
     property string apiKey: ""
     property var availableModels: []
     property string selectedModel: "local-prototype"
@@ -16,6 +17,7 @@ Rectangle {
 
     signal providerSelected(string provider)
     signal endpointSubmitted(string endpoint)
+    signal modelsEndpointSubmitted(string modelsEndpoint)
     signal apiKeySubmitted(string apiKey)
     signal refreshRequested()
     signal testRequested()
@@ -72,6 +74,24 @@ Rectangle {
             Button {
                 text: "Set"
                 onClicked: root.endpointSubmitted(endpointField.text)
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+
+            TextField {
+                id: modelsEndpointField
+                Layout.fillWidth: true
+                placeholderText: "Optional models endpoint override"
+                text: root.modelsEndpoint
+                font.family: Typography.monoFamily
+                onAccepted: root.modelsEndpointSubmitted(text)
+            }
+
+            Button {
+                text: "Save Models URL"
+                onClicked: root.modelsEndpointSubmitted(modelsEndpointField.text)
             }
         }
 
@@ -166,6 +186,10 @@ Rectangle {
         endpointField.text = endpoint
     }
 
+    onModelsEndpointChanged: {
+        modelsEndpointField.text = modelsEndpoint
+    }
+
     onApiKeyChanged: {
         apiKeyField.text = apiKey
     }
@@ -190,6 +214,7 @@ Rectangle {
         if (idx >= 0) {
             providerCombo.currentIndex = idx
         }
+        modelsEndpointField.text = modelsEndpoint
         apiKeyField.text = apiKey
         idx = modelCombo.find(selectedModel)
         if (idx >= 0) {

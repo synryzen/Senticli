@@ -83,6 +83,7 @@ ApplicationWindow {
             provider: backend.provider
             providers: backend.providers
             endpoint: backend.endpoint
+            modelsEndpoint: backend.modelsEndpoint
             apiKey: backend.apiKey
             availableModels: backend.availableModels
             selectedModel: backend.selectedModel
@@ -101,6 +102,9 @@ ApplicationWindow {
             }
             onEndpointSubmitted: function(value) {
                 backend.setEndpoint(value)
+            }
+            onModelsEndpointSubmitted: function(value) {
+                backend.setModelsEndpoint(value)
             }
             onApiKeySubmitted: function(value) {
                 backend.setApiKey(value)
@@ -165,6 +169,7 @@ ApplicationWindow {
             provider: backend.provider
             providers: backend.providers
             endpoint: backend.endpoint
+            modelsEndpoint: backend.modelsEndpoint
             apiKey: backend.apiKey
             availableModels: backend.availableModels
             selectedModel: backend.selectedModel
@@ -175,6 +180,9 @@ ApplicationWindow {
             }
             onEndpointSubmitted: function(value) {
                 backend.setEndpoint(value)
+            }
+            onModelsEndpointSubmitted: function(value) {
+                backend.setModelsEndpoint(value)
             }
             onApiKeySubmitted: function(value) {
                 backend.setApiKey(value)

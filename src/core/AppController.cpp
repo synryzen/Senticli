@@ -103,6 +103,11 @@ QString AppController::endpoint() const
     return m_endpoint;
 }
 
+QString AppController::modelsEndpoint() const
+{
+    return m_modelsEndpoint;
+}
+
 QString AppController::apiKey() const
 {
     return m_apiKey;
@@ -294,6 +299,30 @@ void AppController::setEndpoint(const QString &endpoint)
     saveSettings();
 }
 
+void AppController::setModelsEndpoint(const QString &modelsEndpoint)
+{
+    const QString trimmed = modelsEndpoint.trimmed();
+    const QString normalized = normalizedModelsOverrideUrl(modelsEndpoint);
+    if (!trimmed.isEmpty() && normalized.isEmpty()) {
+        setModelStatus("Invalid models endpoint");
+        return;
+    }
+
+    if (m_modelsEndpoint == normalized) {
+        return;
+    }
+
+    m_modelsEndpoint = normalized;
+    emit modelsEndpointChanged();
+    setModelStatus(
+        m_modelsEndpoint.isEmpty() ? "Models endpoint reset to auto (/v1/models)"
+                                   : QString("Models endpoint: %1").arg(m_modelsEndpoint));
+    appendAudit(
+        m_modelsEndpoint.isEmpty() ? "Models endpoint reset to auto"
+                                   : QString("Models endpoint changed: %1").arg(m_modelsEndpoint));
+    saveSettings();
+}
+
 void AppController::setApiKey(const QString &apiKey)
 {
     const QString trimmed = apiKey.trimmed();
@@ -414,7 +443,8 @@ void AppController::setMemoryEnabled(bool enabled)
 
 void AppController::refreshModels()
 {
-    const QString modelsUrl = modelsUrlFromEndpoint(m_endpoint);
+    const QString modelsUrl = m_modelsEndpoint.isEmpty() ? modelsUrlFromEndpoint(m_endpoint)
+                                                          : m_modelsEndpoint;
     if (modelsUrl.isEmpty()) {
         setModelStatus("Invalid endpoint");
         return;
@@ -501,7 +531,8 @@ void AppController::refreshModels()
 
 void AppController::testProviderConnection()
 {
-    const QString modelsUrl = modelsUrlFromEndpoint(m_endpoint);
+    const QString modelsUrl = m_modelsEndpoint.isEmpty() ? modelsUrlFromEndpoint(m_endpoint)
+                                                          : m_modelsEndpoint;
     if (modelsUrl.isEmpty()) {
         setModelStatus("Invalid endpoint");
         return;
@@ -966,6 +997,8 @@ void AppController::loadSettings()
     }
 
     m_endpoint = settings.value("ai/endpoint", m_endpoint).toString();
+    m_modelsEndpoint = normalizedModelsOverrideUrl(
+        settings.value("ai/modelsEndpoint", m_modelsEndpoint).toString());
     m_apiKey = settings.value("ai/apiKey", m_apiKey).toString();
     m_selectedModel = settings.value("ai/selectedModel", m_selectedModel).toString();
     m_availableModels = settings.value("ai/availableModels", QStringList{"local-prototype"}).toStringList();
@@ -997,6 +1030,7 @@ void AppController::saveSettings() const
     QSettings settings;
     settings.setValue("ai/provider", m_provider);
     settings.setValue("ai/endpoint", m_endpoint);
+    settings.setValue("ai/modelsEndpoint", m_modelsEndpoint);
     settings.setValue("ai/apiKey", m_apiKey);
     settings.setValue("ai/selectedModel", m_selectedModel);
     settings.setValue("ai/availableModels", m_availableModels);
@@ -1146,6 +1180,7 @@ void AppController::handleInput(const QString &text)
             "Commands:\n"
             "/provider <Custom|LM Studio|Ollama>\n"
             "/endpoint <url>\n"
+            "/models-endpoint <url> (optional override)\n"
             "/apikey <token> (or /apikey clear)\n"
             "/models\n"
             "/model <id>\n"
@@ -1213,6 +1248,18 @@ void AppController::handleInput(const QString &text)
 
     if (lowered.startsWith("/endpoint ")) {
         setEndpoint(text.mid(10).trimmed());
+        return;
+    }
+
+    if (lowered.startsWith("/models-endpoint ")) {
+        const QString value = text.mid(17).trimmed();
+        if (value.toLower() == "auto" || value.toLower() == "clear") {
+            setModelsEndpoint("");
+            postAssistant("Models endpoint override cleared (auto mode).");
+            return;
+        }
+        setModelsEndpoint(value);
+        postAssistant("Models endpoint override saved.");
         return;
     }
 
@@ -1656,6 +1703,39 @@ QString AppController::normalizedCompletionUrl(const QString &endpoint) const
         path += "/chat/completions";
     } else {
         path += "/chat/completions";
+    }
+
+    url.setPath(path);
+    url.setQuery(QString());
+    url.setFragment(QString());
+    return url.toString();
+}
+
+QString AppController::normalizedModelsOverrideUrl(const QString &endpoint) const
+{
+    QString raw = endpoint.trimmed();
+    if (raw.isEmpty()) {
+        return {};
+    }
+
+    if (!raw.startsWith("http://", Qt::CaseInsensitive)
+        && !raw.startsWith("https://", Qt::CaseInsensitive)) {
+        raw.prepend("http://");
+    }
+
+    QUrl url(raw);
+    if (!url.isValid()) {
+        return {};
+    }
+
+    QString path = url.path().trimmed();
+    path.remove(QRegularExpression("/+$"));
+
+    if (path.isEmpty()) {
+        path = "/v1/models";
+    } else if (path.endsWith("/chat/completions")) {
+        path.chop(QString("/chat/completions").size());
+        path += "/models";
     }
 
     url.setPath(path);
