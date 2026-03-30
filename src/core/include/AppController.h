@@ -224,11 +224,13 @@ private:
     bool wavHasSpeech(const QByteArray &wavData) const;
     void requestTranscription(const QByteArray &wavData);
     void routeVoiceTranscript(const QString &text);
+    void dispatchVoiceTranscript(const QString &transcript);
     bool isAssistantAudible() const;
     QString expressionFromAssistantText(const QString &text, const QString &kind = "assistant") const;
     int voiceChunkSeconds() const;
     int voiceRestartDelayMs() const;
     int voiceBargeDebounceMs() const;
+    int voiceUtteranceHoldMs() const;
     int echoSuppressStartMs() const;
     int echoSuppressTailMs() const;
     int vadAmplitudeThreshold() const;
@@ -332,6 +334,8 @@ private:
     QTimer m_streamFlushTimer;
     QTimer m_shellTimeoutTimer;
     QTimer m_voiceCaptureRestartTimer;
+    QTimer m_voiceUtteranceTimer;
+    QString m_voiceUtteranceBuffer;
     int m_shellOutputRow = -1;
     QProcess m_shellProcess;
     QProcess m_voiceCaptureProcess;

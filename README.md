@@ -29,6 +29,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Echo suppression in duplex mode to avoid self-transcription while speaking
 - Tunable duplex controls: VAD sensitivity + smoothness preset (Responsive/Balanced/Natural/Studio)
 - One-click duplex quick-tune presets in AI Settings (Fast/Balanced/Human/Studio)
+- Voice-utterance buffering combines partial STT fragments before dispatch for smoother turn-taking
 - Dedicated AI Settings panel with:
   - saved connection profiles (save/load/delete presets)
   - provider + endpoint controls

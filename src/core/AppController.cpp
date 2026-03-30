@@ -96,6 +96,16 @@ AppController::AppController(QObject *parent)
         }
     });
 
+    m_voiceUtteranceTimer.setSingleShot(true);
+    connect(&m_voiceUtteranceTimer, &QTimer::timeout, this, [this]() {
+        const QString merged = m_voiceUtteranceBuffer.simplified();
+        m_voiceUtteranceBuffer.clear();
+        if (merged.isEmpty()) {
+            return;
+        }
+        dispatchVoiceTranscript(merged);
+    });
+
     connect(
         &m_voiceCaptureProcess,
         qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
@@ -2747,6 +2757,8 @@ void AppController::startVoiceCaptureLoop()
 void AppController::stopVoiceCaptureLoop()
 {
     m_voiceCaptureRestartTimer.stop();
+    m_voiceUtteranceTimer.stop();
+    m_voiceUtteranceBuffer.clear();
     if (m_voiceCaptureProcess.state() != QProcess::NotRunning) {
         m_voiceCaptureProcess.kill();
         m_voiceCaptureProcess.waitForFinished(250);
@@ -2923,10 +2935,42 @@ void AppController::routeVoiceTranscript(const QString &text)
         return;
     }
 
-    appendAudit("Voice transcript: " + transcript);
-    QString routed = transcript;
+    appendAudit("Voice fragment: " + transcript);
+
+    if (m_duplexVoiceEnabled && m_micActive) {
+        const QString fragment = transcript.simplified();
+        if (!fragment.isEmpty()) {
+            if (!m_voiceUtteranceBuffer.isEmpty()) {
+                const QString existingLower = m_voiceUtteranceBuffer.toLower();
+                const QString fragmentLower = fragment.toLower();
+                // Avoid repeating near-identical partial hypotheses from STT.
+                if (!existingLower.endsWith(fragmentLower)) {
+                    m_voiceUtteranceBuffer += " " + fragment;
+                }
+            } else {
+                m_voiceUtteranceBuffer = fragment;
+            }
+            m_voiceUtteranceTimer.start(voiceUtteranceHoldMs());
+            setFaceState("listening");
+            setStatusText("Listening...");
+        }
+        return;
+    }
+
+    dispatchVoiceTranscript(transcript);
+}
+
+void AppController::dispatchVoiceTranscript(const QString &transcript)
+{
+    const QString clean = transcript.trimmed();
+    if (clean.isEmpty()) {
+        return;
+    }
+
+    appendAudit("Voice transcript: " + clean);
+    QString routed = clean;
     bool wakeOnly = false;
-    parseWakeInput(transcript, &routed, &wakeOnly);
+    parseWakeInput(clean, &routed, &wakeOnly);
     if (wakeOnly) {
         if (!m_wakeResponses.isEmpty()) {
             const int idx = QRandomGenerator::global()->bounded(m_wakeResponses.size());
@@ -3039,6 +3083,20 @@ int AppController::voiceBargeDebounceMs() const
         return 900;
     }
     return 550;
+}
+
+int AppController::voiceUtteranceHoldMs() const
+{
+    if (m_duplexSmoothness == "Responsive") {
+        return 380;
+    }
+    if (m_duplexSmoothness == "Natural") {
+        return 900;
+    }
+    if (m_duplexSmoothness == "Studio") {
+        return 1200;
+    }
+    return 650;
 }
 
 int AppController::echoSuppressStartMs() const
