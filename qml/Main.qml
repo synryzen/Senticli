@@ -26,6 +26,7 @@ ApplicationWindow {
             cameraEnabled: backend.cameraEnabled
             cameraAnalyzeRunning: backend.cameraAnalyzeRunning
             faceStyle: backend.faceStyle
+            expressionIntensity: backend.expressionIntensity
             mouthBeatMs: backend.mouthBeatMs
             speakingActive: backend.speakingActive
         }
@@ -117,6 +118,8 @@ ApplicationWindow {
             personalities: backend.personalities
             faceStyle: backend.faceStyle
             faceStyles: backend.faceStyles
+            expressionIntensity: backend.expressionIntensity
+            expressionIntensityOptions: backend.expressionIntensityOptions
             gender: backend.gender
             genders: backend.genders
             voiceStyle: backend.voiceStyle
@@ -207,6 +210,9 @@ ApplicationWindow {
             }
             onFaceStyleSelected: function(value) {
                 backend.setFaceStyle(value)
+            }
+            onExpressionIntensitySelected: function(value) {
+                backend.setExpressionIntensity(value)
             }
             onGenderSelected: function(value) {
                 backend.setGender(value)

@@ -52,6 +52,8 @@ class AppController : public QObject
     Q_PROPERTY(QStringList personalities READ personalities CONSTANT)
     Q_PROPERTY(QString faceStyle READ faceStyle WRITE setFaceStyle NOTIFY faceStyleChanged)
     Q_PROPERTY(QStringList faceStyles READ faceStyles CONSTANT)
+    Q_PROPERTY(QString expressionIntensity READ expressionIntensity WRITE setExpressionIntensity NOTIFY expressionIntensityChanged)
+    Q_PROPERTY(QStringList expressionIntensityOptions READ expressionIntensityOptions CONSTANT)
     Q_PROPERTY(QString gender READ gender WRITE setGender NOTIFY genderChanged)
     Q_PROPERTY(QStringList genders READ genders CONSTANT)
     Q_PROPERTY(QString voiceStyle READ voiceStyle WRITE setVoiceStyle NOTIFY voiceStyleChanged)
@@ -113,6 +115,8 @@ public:
     QStringList personalities() const;
     QString faceStyle() const;
     QStringList faceStyles() const;
+    QString expressionIntensity() const;
+    QStringList expressionIntensityOptions() const;
     QString gender() const;
     QStringList genders() const;
     QString voiceStyle() const;
@@ -165,6 +169,7 @@ public:
     Q_INVOKABLE void setDuplexSmoothness(const QString &value);
     Q_INVOKABLE void setPersonality(const QString &personality);
     Q_INVOKABLE void setFaceStyle(const QString &faceStyle);
+    Q_INVOKABLE void setExpressionIntensity(const QString &value);
     Q_INVOKABLE void setGender(const QString &gender);
     Q_INVOKABLE void setVoiceStyle(const QString &voiceStyle);
     Q_INVOKABLE void setVoiceEngine(const QString &voiceEngine);
@@ -210,6 +215,7 @@ signals:
     void duplexSmoothnessChanged();
     void personalityChanged();
     void faceStyleChanged();
+    void expressionIntensityChanged();
     void genderChanged();
     void voiceStyleChanged();
     void voiceEngineChanged();
@@ -340,6 +346,7 @@ private:
     QString m_duplexSmoothness = "Balanced";
     QString m_personality = "Helpful";
     QString m_faceStyle = "Loona";
+    QString m_expressionIntensity = "Normal";
     QString m_gender = "Neutral";
     QString m_voiceStyle = "Default";
     QString m_voiceEngine = "Auto";

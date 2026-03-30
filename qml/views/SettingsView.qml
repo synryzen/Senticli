@@ -35,6 +35,8 @@ Rectangle {
     property var personalities: ["Helpful", "Professional", "Witty", "Teacher", "Hacker", "Calm"]
     property string faceStyle: "Loona"
     property var faceStyles: ["Loona", "Terminal", "Orb"]
+    property string expressionIntensity: "Normal"
+    property var expressionIntensityOptions: ["Subtle", "Normal", "Dramatic"]
     property string gender: "Neutral"
     property var genders: ["Neutral", "Male", "Female"]
     property string voiceStyle: "Default"
@@ -75,6 +77,7 @@ Rectangle {
     signal duplexSmoothnessSelected(string value)
     signal personalitySelected(string personality)
     signal faceStyleSelected(string faceStyle)
+    signal expressionIntensitySelected(string value)
     signal genderSelected(string gender)
     signal voiceStyleSelected(string voiceStyle)
     signal voiceEngineSelected(string voiceEngine)
@@ -737,6 +740,22 @@ Rectangle {
                             }
 
                             Label {
+                                text: "Expression"
+                                color: Colors.textSecondary
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            ComboBox {
+                                id: expressionIntensityCombo
+                                Layout.preferredWidth: 140
+                                model: root.expressionIntensityOptions
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                                onActivated: root.expressionIntensitySelected(currentText)
+                            }
+
+                            Label {
                                 text: "Voice Gender"
                                 color: Colors.textSecondary
                                 font.family: Typography.uiFamily
@@ -1102,6 +1121,13 @@ Rectangle {
         }
     }
 
+    onExpressionIntensityChanged: {
+        const idx = expressionIntensityCombo.find(expressionIntensity)
+        if (idx >= 0) {
+            expressionIntensityCombo.currentIndex = idx
+        }
+    }
+
     onGenderChanged: {
         const idx = genderCombo.find(gender)
         if (idx >= 0) {
@@ -1229,6 +1255,11 @@ Rectangle {
         idx = faceStyleCombo.find(faceStyle)
         if (idx >= 0) {
             faceStyleCombo.currentIndex = idx
+        }
+
+        idx = expressionIntensityCombo.find(expressionIntensity)
+        if (idx >= 0) {
+            expressionIntensityCombo.currentIndex = idx
         }
 
         idx = genderCombo.find(gender)

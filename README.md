@@ -12,7 +12,9 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Two-pane layout matching the product concept
 - Animated digital face with status-driven expressions
 - Loona-inspired companion expression set (happy/sad/angry/confused/sleeping + look-around)
+- Emote-only mouth behavior (hidden by default, shown for big smile/kiss/frown/grimace moments)
 - Selectable face styles (`Loona`, `Terminal`, `Orb`)
+- Expression intensity control (`Subtle`, `Normal`, `Dramatic`) with sentiment-driven reactions
 - Optional camera snapshot analysis (captures a frame with `ffmpeg` and sends it to your vision-capable model)
 - Terminal-style message stream with user/assistant/system bubbles
 - Terminal-native bottom pane with line-based output and CLI prompt styling
@@ -52,6 +54,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - duplex smoothness + VAD sensitivity controls
   - STT endpoint + STT model controls
   - personality preset selector
+  - expression intensity selector
   - voice gender + voice style selectors
   - voice engine selector (`Auto`, `Speech Dispatcher`, `eSpeak`, `Piper`)
   - optional Piper model path
@@ -90,6 +93,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - `/stt-model <id>`
   - `/personality <Helpful|Professional|Witty|Teacher|Hacker|Calm>`
   - `/face-style <Loona|Terminal|Orb>`
+  - `/expression <Subtle|Normal|Dramatic>`
   - `/gender <Neutral|Male|Female>`
   - `/voice-style <Default|Soft|Bright|Narrator>`
   - `/voice-engine <Auto|Speech Dispatcher|eSpeak|Piper>`
@@ -200,6 +204,7 @@ You can do the same via commands:
 /stt-endpoint https://lm.msidragon.com/v1/audio/transcriptions
 /stt-model whisper-1
 /personality teacher
+/expression dramatic
 /gender female
 /voice-style narrator
 /voice-engine Piper

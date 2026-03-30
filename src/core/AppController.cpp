@@ -322,6 +322,16 @@ QStringList AppController::faceStyles() const
     return {"Loona", "Terminal", "Orb"};
 }
 
+QString AppController::expressionIntensity() const
+{
+    return m_expressionIntensity;
+}
+
+QStringList AppController::expressionIntensityOptions() const
+{
+    return {"Subtle", "Normal", "Dramatic"};
+}
+
 QString AppController::gender() const
 {
     return m_gender;
@@ -1332,6 +1342,30 @@ void AppController::setFaceStyle(const QString &faceStyle)
     emit faceStyleChanged();
     setModelStatus("Face style: " + m_faceStyle);
     appendAudit("Face style set: " + m_faceStyle);
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
+void AppController::setExpressionIntensity(const QString &value)
+{
+    const QString trimmed = value.trimmed();
+    QString resolved;
+    for (const QString &candidate : expressionIntensityOptions()) {
+        if (candidate.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            resolved = candidate;
+            break;
+        }
+    }
+    if (resolved.isEmpty() || m_expressionIntensity == resolved) {
+        return;
+    }
+
+    m_expressionIntensity = resolved;
+    emit expressionIntensityChanged();
+    setModelStatus("Expression intensity: " + m_expressionIntensity);
+    appendAudit("Expression intensity set: " + m_expressionIntensity);
     if (!m_activeProfile.isEmpty()) {
         saveProfileToSettings(m_activeProfile);
     }
@@ -2409,6 +2443,10 @@ void AppController::loadSettings()
     if (!faceStyles().contains(m_faceStyle)) {
         m_faceStyle = "Loona";
     }
+    m_expressionIntensity = settings.value("ui/expressionIntensity", m_expressionIntensity).toString();
+    if (!expressionIntensityOptions().contains(m_expressionIntensity)) {
+        m_expressionIntensity = "Normal";
+    }
     m_gender = settings.value("ai/gender", m_gender).toString();
     if (!genders().contains(m_gender)) {
         m_gender = "Neutral";
@@ -2474,6 +2512,7 @@ void AppController::saveSettings() const
     settings.setValue("memory/enabled", m_memoryEnabled);
     settings.setValue("permissions/grantedFolders", m_grantedFolders);
     settings.setValue("ui/faceStyle", m_faceStyle);
+    settings.setValue("ui/expressionIntensity", m_expressionIntensity);
     settings.setValue("ui/setupComplete", m_setupComplete);
 }
 
@@ -2653,6 +2692,7 @@ void AppController::handleInput(const QString &text)
             "/stt-model <id>\n"
             "/personality <Helpful|Professional|Witty|Teacher|Hacker|Calm>\n"
             "/face-style <Loona|Terminal|Orb>\n"
+            "/expression <Subtle|Normal|Dramatic>\n"
             "/gender <Neutral|Male|Female>\n"
             "/voice-style <Default|Soft|Bright|Narrator>\n"
             "/voice-engine <Auto|Speech Dispatcher|eSpeak|Piper>\n"
@@ -2684,12 +2724,14 @@ void AppController::handleInput(const QString &text)
 
     if (lowered == "/voices") {
         postAssistant(
-            QString("Voice options:\nGender: %1\nStyle: %2\nEngine: %3\nCurrent engine: %4\nPiper model: %5")
+            QString("Voice options:\nGender: %1\nStyle: %2\nEngine: %3\nCurrent engine: %4\nPiper model: %5\nFace style: %6\nExpression: %7")
                 .arg(genders().join(", "),
                      voiceStyles().join(", "),
                      voiceEngines().join(", "),
                      m_voiceEngine,
-                     m_piperModelPath.isEmpty() ? "(not set)" : m_piperModelPath));
+                     m_piperModelPath.isEmpty() ? "(not set)" : m_piperModelPath,
+                     m_faceStyle,
+                     m_expressionIntensity));
         return;
     }
 
@@ -2943,6 +2985,23 @@ void AppController::handleInput(const QString &text)
             return;
         }
         setFaceStyle(value);
+        return;
+    }
+
+    if (lowered.startsWith("/expression ")) {
+        const QString value = text.mid(12).trimmed();
+        bool valid = false;
+        for (const QString &candidate : expressionIntensityOptions()) {
+            if (candidate.compare(value, Qt::CaseInsensitive) == 0) {
+                valid = true;
+                break;
+            }
+        }
+        if (!valid) {
+            postAssistant("Usage: /expression <Subtle|Normal|Dramatic>", "warning");
+            return;
+        }
+        setExpressionIntensity(value);
         return;
     }
 
@@ -3212,7 +3271,9 @@ void AppController::requestRemoteCompletion(const QString &text)
             m_streamSawToken = true;
             if (!m_ttsEnabled) {
                 setSpeakingActive(true);
-                setFaceState("speaking");
+                const QString partial = (m_streamAccumulatedText + m_streamPendingText + token).right(420);
+                const QString partialExpression = expressionFromAssistantText(partial);
+                setFaceState(partialExpression);
                 setStatusText("Streaming response...");
             } else {
                 if (!isAssistantAudible()) {
@@ -3387,9 +3448,18 @@ QString AppController::systemPersonaPrompt() const
     return QString(
                "You are %1, a local Linux terminal companion. "
                "Keep replies %2. %3 "
-               "Current presentation preferences: personality=%4, face-style=%5, voice-gender=%6, voice-style=%7, voice-engine=%8. "
+               "Current presentation preferences: personality=%4, face-style=%5, expression-intensity=%6, voice-gender=%7, voice-style=%8, voice-engine=%9. "
                "When suggesting actions, be explicit and safe.")
-        .arg(m_assistantName, tone, conversationInstruction, m_personality, m_faceStyle, m_gender, m_voiceStyle, m_voiceEngine);
+        .arg(
+            m_assistantName,
+            tone,
+            conversationInstruction,
+            m_personality,
+            m_faceStyle,
+            m_expressionIntensity,
+            m_gender,
+            m_voiceStyle,
+            m_voiceEngine);
 }
 
 void AppController::postAssistant(const QString &text, const QString &kind)
@@ -3733,40 +3803,72 @@ QString AppController::expressionFromAssistantText(const QString &text, const QS
     }
 
     const QString lowered = text.toLower();
-    if (lowered.contains("error")
-        || lowered.contains("failed")
-        || lowered.contains("cannot")
-        || lowered.contains("can't")
-        || lowered.contains("permission denied")
-        || lowered.contains("not found")) {
-        return "angry";
+    auto countHits = [&lowered](const QStringList &keywords) {
+        int score = 0;
+        for (const QString &keyword : keywords) {
+            if (lowered.contains(keyword)) {
+                ++score;
+            }
+        }
+        return score;
+    };
+
+    int positive = countHits({
+        "done", "completed", "success", "great", "nice", "ready", "awesome", "perfect",
+        "fixed", "resolved", "works", "glad", "absolutely", "sure", "happy to", "let's do it"
+    });
+    int negative = countHits({
+        "error", "failed", "cannot", "can't", "permission denied", "not found", "invalid",
+        "timed out", "denied", "broken", "unavailable"
+    });
+    int sad = countHits({
+        "sorry", "i apologize", "unfortunately", "wish i could", "regret", "i can't do that"
+    });
+    int confused = countHits({
+        "i'm not sure", "i am not sure", "unclear", "do you mean", "could you clarify",
+        "which one", "not certain", "ambiguous"
+    });
+
+    if (lowered.contains("!")) {
+        positive += 1;
+    }
+    if (lowered.contains("??")) {
+        confused += 1;
     }
 
-    if (lowered.contains("i'm not sure")
-        || lowered.contains("i am not sure")
-        || lowered.contains("unclear")
-        || lowered.contains("do you mean")
-        || lowered.contains("could you clarify")) {
-        return "confused";
+    QString expression = "speaking";
+    if (sad >= 2 || (sad > 0 && negative > positive)) {
+        expression = "sad";
+    } else if (negative >= 2) {
+        expression = "angry";
+    } else if (confused >= 2) {
+        expression = "confused";
+    } else if (positive >= 2 && negative == 0) {
+        expression = "happy";
+    } else if (positive > negative && positive > 0) {
+        expression = "happy";
     }
 
-    if (lowered.contains("sorry")
-        || lowered.contains("i apologize")
-        || lowered.contains("unfortunately")
-        || lowered.contains("wish i could")) {
-        return "sad";
+    if (m_expressionIntensity == "Subtle") {
+        if (expression == "angry") {
+            return "confused";
+        }
+        if (expression == "happy" && positive <= 1) {
+            return "speaking";
+        }
+        return expression;
     }
 
-    if (lowered.contains("done")
-        || lowered.contains("completed")
-        || lowered.contains("success")
-        || lowered.contains("great")
-        || lowered.contains("nice")
-        || lowered.contains("ready")) {
-        return "happy";
+    if (m_expressionIntensity == "Dramatic") {
+        if (expression == "speaking" && positive > 0 && negative == 0) {
+            return "happy";
+        }
+        if (expression == "speaking" && (negative > 0 || lowered.contains("cannot"))) {
+            return "confused";
+        }
     }
 
-    return "speaking";
+    return expression;
 }
 
 int AppController::voiceChunkSeconds() const
@@ -4084,6 +4186,7 @@ void AppController::loadProfile(const QString &profileName)
     const bool profileConversationalMode = settings.value(base + "conversationalMode", m_conversationalMode).toBool();
     const QString profilePersonality = settings.value(base + "personality", m_personality).toString();
     const QString profileFaceStyle = settings.value(base + "faceStyle", m_faceStyle).toString();
+    const QString profileExpressionIntensity = settings.value(base + "expressionIntensity", m_expressionIntensity).toString();
     const QString profileGender = settings.value(base + "gender", m_gender).toString();
     const QString profileVoiceStyle = settings.value(base + "voiceStyle", m_voiceStyle).toString();
     const QString profileVoiceEngine = settings.value(base + "voiceEngine", m_voiceEngine).toString();
@@ -4184,6 +4287,12 @@ void AppController::loadProfile(const QString &profileName)
         emit faceStyleChanged();
     }
 
+    if (expressionIntensityOptions().contains(profileExpressionIntensity)
+        && m_expressionIntensity != profileExpressionIntensity) {
+        m_expressionIntensity = profileExpressionIntensity;
+        emit expressionIntensityChanged();
+    }
+
     if (genders().contains(profileGender) && m_gender != profileGender) {
         m_gender = profileGender;
         emit genderChanged();
@@ -4256,6 +4365,7 @@ void AppController::saveProfileToSettings(const QString &profileName) const
     settings.setValue(base + "conversationalMode", m_conversationalMode);
     settings.setValue(base + "personality", m_personality);
     settings.setValue(base + "faceStyle", m_faceStyle);
+    settings.setValue(base + "expressionIntensity", m_expressionIntensity);
     settings.setValue(base + "gender", m_gender);
     settings.setValue(base + "voiceStyle", m_voiceStyle);
     settings.setValue(base + "voiceEngine", m_voiceEngine);
