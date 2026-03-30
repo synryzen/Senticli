@@ -187,6 +187,11 @@ private:
     void handleShellOutput();
     void handleShellFinished(int exitCode, QProcess::ExitStatus exitStatus);
     bool speakText(const QString &text);
+    void enqueueTtsChunk(const QString &text);
+    void processTtsSentenceBuffer(bool flushRemainder);
+    void startNextTtsChunk();
+    void clearTtsQueue();
+    int findSentenceBoundary(const QString &text) const;
     void setSpeakingActive(bool active);
     void stopSpeaking();
     QString currentProjectKey() const;
@@ -274,6 +279,10 @@ private:
     bool m_streamSawToken = false;
     bool m_cancelRequested = false;
     bool m_streamFinalizePending = false;
+    bool m_waitingForTtsDrain = false;
+    QString m_ttsSentenceBuffer;
+    QStringList m_ttsQueue;
+    bool m_ttsQueueRunning = false;
     QTimer m_streamFlushTimer;
     QTimer m_shellTimeoutTimer;
     int m_shellOutputRow = -1;

@@ -57,12 +57,23 @@ AppController::AppController(QObject *parent)
         setSpeakingActive(true);
         setFaceState("speaking");
         setStatusText("Speaking...");
+        m_ttsQueueRunning = true;
     });
 
     connect(&m_ttsProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, [this](int, QProcess::ExitStatus) {
         appendAudit("TTS finished");
+        m_ttsQueueRunning = false;
+        if (!m_ttsQueue.isEmpty()) {
+            startNextTtsChunk();
+            return;
+        }
         setSpeakingActive(false);
-        QTimer::singleShot(120, this, [this]() { finalizeAssistantState(); });
+        if (m_waitingForTtsDrain) {
+            m_waitingForTtsDrain = false;
+            QTimer::singleShot(80, this, [this]() { finalizeAssistantState(); });
+        } else {
+            QTimer::singleShot(120, this, [this]() { finalizeAssistantState(); });
+        }
     });
 
     loadSettings();
@@ -308,6 +319,12 @@ void AppController::sendUserInput(const QString &text)
     if (m_micActive) {
         m_micActive = false;
         emit micActiveChanged();
+    }
+
+    if (m_ttsProcess.state() != QProcess::NotRunning || !m_ttsQueue.isEmpty()) {
+        appendAudit("Barge-in: user interrupted speech");
+        clearTtsQueue();
+        stopSpeaking();
     }
 
     QString routedText = trimmed;
@@ -992,7 +1009,8 @@ void AppController::cancelActiveRequest()
         canceledSomething = true;
     }
 
-    if (m_ttsProcess.state() != QProcess::NotRunning) {
+    if (m_ttsProcess.state() != QProcess::NotRunning || !m_ttsQueue.isEmpty()) {
+        clearTtsQueue();
         stopSpeaking();
         canceledSomething = true;
     }
@@ -1174,10 +1192,16 @@ void AppController::maybeFinalizeSuccessfulStream()
     appendAudit("Completion received");
     clearStreamingState();
     if (m_ttsEnabled) {
-        const bool started = speakText(finalText);
-        if (!started) {
-            QTimer::singleShot(120, this, [this]() { finalizeAssistantState(); });
+        processTtsSentenceBuffer(true);
+        if (m_ttsQueue.isEmpty() && m_ttsProcess.state() == QProcess::NotRunning) {
+            enqueueTtsChunk(finalText);
         }
+        if (m_ttsQueue.isEmpty() && m_ttsProcess.state() == QProcess::NotRunning) {
+            QTimer::singleShot(80, this, [this]() { finalizeAssistantState(); });
+            return;
+        }
+        m_waitingForTtsDrain = true;
+        startNextTtsChunk();
         return;
     }
     QTimer::singleShot(180, this, [this]() { finalizeAssistantState(); });
@@ -1195,6 +1219,7 @@ void AppController::clearStreamingState()
     m_streamSawToken = false;
     m_cancelRequested = false;
     m_streamFinalizePending = false;
+    m_waitingForTtsDrain = false;
 }
 
 void AppController::startShellCommand(const QString &command)
@@ -1393,9 +1418,95 @@ bool AppController::speakText(const QString &text)
     return false;
 }
 
+void AppController::enqueueTtsChunk(const QString &text)
+{
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty()) {
+        return;
+    }
+    m_ttsQueue.append(trimmed);
+}
+
+void AppController::processTtsSentenceBuffer(bool flushRemainder)
+{
+    if (!m_ttsEnabled) {
+        return;
+    }
+
+    while (true) {
+        const int boundary = findSentenceBoundary(m_ttsSentenceBuffer);
+        if (boundary <= 0) {
+            break;
+        }
+        const QString part = m_ttsSentenceBuffer.left(boundary).trimmed();
+        m_ttsSentenceBuffer.remove(0, boundary);
+        enqueueTtsChunk(part);
+    }
+
+    if (flushRemainder) {
+        enqueueTtsChunk(m_ttsSentenceBuffer.trimmed());
+        m_ttsSentenceBuffer.clear();
+    }
+}
+
+void AppController::startNextTtsChunk()
+{
+    if (!m_ttsEnabled || m_ttsProcess.state() != QProcess::NotRunning || m_ttsQueue.isEmpty()) {
+        return;
+    }
+
+    const QString next = m_ttsQueue.takeFirst();
+    const bool started = speakText(next);
+    if (!started) {
+        if (!m_ttsQueue.isEmpty()) {
+            QTimer::singleShot(0, this, [this]() { startNextTtsChunk(); });
+            return;
+        }
+        setSpeakingActive(false);
+        if (m_waitingForTtsDrain) {
+            m_waitingForTtsDrain = false;
+            QTimer::singleShot(80, this, [this]() { finalizeAssistantState(); });
+        }
+    }
+}
+
+void AppController::clearTtsQueue()
+{
+    m_ttsQueue.clear();
+    m_ttsSentenceBuffer.clear();
+    m_waitingForTtsDrain = false;
+    m_ttsQueueRunning = false;
+    setSpeakingActive(false);
+}
+
+int AppController::findSentenceBoundary(const QString &text) const
+{
+    if (text.isEmpty()) {
+        return -1;
+    }
+
+    static const QString boundaries = QStringLiteral(".!?;:\n。！？；：");
+    for (int i = 0; i < text.size(); ++i) {
+        if (boundaries.contains(text.at(i))) {
+            return i + 1;
+        }
+    }
+
+    if (text.size() > 140) {
+        int split = text.lastIndexOf(' ', 120);
+        if (split < 32) {
+            split = 120;
+        }
+        return split + 1;
+    }
+
+    return -1;
+}
+
 void AppController::stopSpeaking()
 {
     if (m_ttsProcess.state() == QProcess::NotRunning) {
+        setSpeakingActive(false);
         return;
     }
     m_ttsProcess.kill();
@@ -2023,6 +2134,8 @@ void AppController::requestRemoteCompletion(const QString &text)
     m_chatRawBuffer.clear();
     m_streamAccumulatedText.clear();
     m_streamPendingText.clear();
+    m_ttsSentenceBuffer.clear();
+    clearTtsQueue();
     m_streamSawToken = false;
     m_cancelRequested = false;
     m_streamFinalizePending = false;
@@ -2096,6 +2209,9 @@ void AppController::requestRemoteCompletion(const QString &text)
             } else {
                 setFaceState("thinking");
                 setStatusText("Receiving response...");
+                m_ttsSentenceBuffer += token;
+                processTtsSentenceBuffer(false);
+                startNextTtsChunk();
             }
             queueStreamText(token);
         }
@@ -2248,8 +2364,11 @@ void AppController::postAssistant(const QString &text, const QString &kind)
     }
 
     if (m_ttsEnabled) {
-        const bool started = speakText(text);
-        if (started) {
+        clearTtsQueue();
+        enqueueTtsChunk(text);
+        m_waitingForTtsDrain = true;
+        startNextTtsChunk();
+        if (m_ttsProcess.state() != QProcess::NotRunning || !m_ttsQueue.isEmpty()) {
             return;
         }
     }

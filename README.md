@@ -24,6 +24,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Typing cursor during stream and cancel button for in-flight responses
 - Adaptive stream smoothing to reduce bursty chunk jumps
 - `Instant` stream mode for lowest-latency output on powerful hardware
+- Sentence-level streaming TTS with barge-in interrupt for smoother conversation flow
 - Dedicated AI Settings panel with:
   - saved connection profiles (save/load/delete presets)
   - provider + endpoint controls
