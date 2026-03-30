@@ -118,6 +118,16 @@ QString AppController::provider() const
     return m_provider;
 }
 
+QStringList AppController::connectionProfiles() const
+{
+    return m_connectionProfiles;
+}
+
+QString AppController::activeProfile() const
+{
+    return m_activeProfile;
+}
+
 QStringList AppController::providers() const
 {
     return {"Custom", "LM Studio", "Ollama"};
@@ -296,6 +306,9 @@ void AppController::setEndpoint(const QString &endpoint)
     setModelStatus("Endpoint updated");
     m_messageModel.addMessage("system", QString("Endpoint: %1").arg(m_endpoint), "system");
     appendAudit("Endpoint changed: " + m_endpoint);
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
     saveSettings();
 }
 
@@ -320,6 +333,9 @@ void AppController::setModelsEndpoint(const QString &modelsEndpoint)
     appendAudit(
         m_modelsEndpoint.isEmpty() ? "Models endpoint reset to auto"
                                    : QString("Models endpoint changed: %1").arg(m_modelsEndpoint));
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
     saveSettings();
 }
 
@@ -334,6 +350,9 @@ void AppController::setApiKey(const QString &apiKey)
     emit apiKeyChanged();
     setModelStatus(m_apiKey.isEmpty() ? "API key cleared" : "API key updated");
     appendAudit(m_apiKey.isEmpty() ? "API key cleared" : "API key updated");
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
     saveSettings();
 }
 
@@ -358,6 +377,9 @@ void AppController::setProvider(const QString &provider)
     setModelStatus(QString("Provider set to %1").arg(m_provider));
     m_messageModel.addMessage("system", QString("Provider: %1").arg(m_provider), "system");
     appendAudit("Provider changed: " + m_provider);
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
     saveSettings();
 }
 
@@ -382,7 +404,86 @@ void AppController::setSelectedModel(const QString &model)
     emit modelNameChanged();
     setModelStatus(QString("Active model: %1").arg(m_selectedModel));
     appendAudit("Model selected: " + m_selectedModel);
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
     saveSettings();
+}
+
+void AppController::setActiveProfile(const QString &profileName)
+{
+    const QString trimmed = profileName.trimmed();
+    if (trimmed.isEmpty() || !m_connectionProfiles.contains(trimmed)) {
+        return;
+    }
+
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+
+    if (m_activeProfile != trimmed) {
+        m_activeProfile = trimmed;
+        emit activeProfileChanged();
+    }
+
+    loadProfile(trimmed);
+    saveSettings();
+    setModelStatus(QString("Loaded profile: %1").arg(trimmed));
+    appendAudit(QString("Profile loaded: %1").arg(trimmed));
+    m_messageModel.addMessage("system", QString("Profile loaded: %1").arg(trimmed), "system");
+}
+
+void AppController::saveCurrentProfile(const QString &profileName)
+{
+    const QString trimmed = profileName.trimmed();
+    if (trimmed.isEmpty()) {
+        setModelStatus("Profile name is required");
+        return;
+    }
+
+    if (!m_connectionProfiles.contains(trimmed)) {
+        m_connectionProfiles.append(trimmed);
+        emit connectionProfilesChanged();
+    }
+
+    if (m_activeProfile != trimmed) {
+        m_activeProfile = trimmed;
+        emit activeProfileChanged();
+    }
+
+    saveProfileToSettings(trimmed);
+    saveSettings();
+    setModelStatus(QString("Profile saved: %1").arg(trimmed));
+    appendAudit(QString("Profile saved: %1").arg(trimmed));
+    m_messageModel.addMessage("system", QString("Profile saved: %1").arg(trimmed), "system");
+}
+
+void AppController::deleteProfile(const QString &profileName)
+{
+    const QString trimmed = profileName.trimmed();
+    if (trimmed.isEmpty() || !m_connectionProfiles.contains(trimmed)) {
+        return;
+    }
+
+    QSettings settings;
+    settings.remove(QString("profiles/%1").arg(trimmed));
+
+    m_connectionProfiles.removeAll(trimmed);
+    if (m_connectionProfiles.isEmpty()) {
+        m_connectionProfiles = {"Default"};
+        saveProfileToSettings("Default");
+    }
+    emit connectionProfilesChanged();
+
+    if (m_activeProfile == trimmed) {
+        m_activeProfile = m_connectionProfiles.first();
+        emit activeProfileChanged();
+        loadProfile(m_activeProfile);
+    }
+
+    saveSettings();
+    setModelStatus(QString("Profile deleted: %1").arg(trimmed));
+    appendAudit(QString("Profile deleted: %1").arg(trimmed));
 }
 
 void AppController::setSmoothingProfile(const QString &profile)
@@ -991,6 +1092,15 @@ void AppController::loadSettings()
 {
     QSettings settings;
 
+    m_connectionProfiles = settings.value("profiles/names", QStringList{"Default"}).toStringList();
+    if (m_connectionProfiles.isEmpty()) {
+        m_connectionProfiles = {"Default"};
+    }
+    m_activeProfile = settings.value("profiles/active", m_connectionProfiles.first()).toString();
+    if (m_activeProfile.isEmpty() || !m_connectionProfiles.contains(m_activeProfile)) {
+        m_activeProfile = m_connectionProfiles.first();
+    }
+
     m_provider = settings.value("ai/provider", m_provider).toString();
     if (!providers().contains(m_provider)) {
         m_provider = "Custom";
@@ -1023,11 +1133,19 @@ void AppController::loadSettings()
             QDir::cleanPath(QDir::homePath() + "/Projects"),
         };
     }
+
+    if (settings.contains(QString("profiles/%1/endpoint").arg(m_activeProfile))) {
+        loadProfile(m_activeProfile);
+    } else {
+        saveProfileToSettings(m_activeProfile);
+    }
 }
 
 void AppController::saveSettings() const
 {
     QSettings settings;
+    settings.setValue("profiles/names", m_connectionProfiles);
+    settings.setValue("profiles/active", m_activeProfile);
     settings.setValue("ai/provider", m_provider);
     settings.setValue("ai/endpoint", m_endpoint);
     settings.setValue("ai/modelsEndpoint", m_modelsEndpoint);
@@ -1178,6 +1296,10 @@ void AppController::handleInput(const QString &text)
     if (lowered == "/help" || lowered == "help") {
         postAssistant(
             "Commands:\n"
+            "/profiles\n"
+            "/profile <name>\n"
+            "/profile-save <name>\n"
+            "/profile-delete <name>\n"
             "/provider <Custom|LM Studio|Ollama>\n"
             "/endpoint <url>\n"
             "/models-endpoint <url> (optional override)\n"
@@ -1193,6 +1315,12 @@ void AppController::handleInput(const QString &text)
             "/recall\n"
             "/forget\n"
             "/voice on|off|stop");
+        return;
+    }
+
+    if (lowered == "/profiles") {
+        postAssistant("Profiles:\n- " + m_connectionProfiles.join("\n- ")
+                      + QString("\nActive: %1").arg(m_activeProfile));
         return;
     }
 
@@ -1243,6 +1371,21 @@ void AppController::handleInput(const QString &text)
 
     if (lowered.startsWith("/provider ")) {
         setProvider(text.mid(10).trimmed());
+        return;
+    }
+
+    if (lowered.startsWith("/profile-save ")) {
+        saveCurrentProfile(text.mid(14).trimmed());
+        return;
+    }
+
+    if (lowered.startsWith("/profile-delete ")) {
+        deleteProfile(text.mid(16).trimmed());
+        return;
+    }
+
+    if (lowered.startsWith("/profile ")) {
+        setActiveProfile(text.mid(9).trimmed());
         return;
     }
 
@@ -1772,6 +1915,71 @@ void AppController::applyAuthHeader(QNetworkRequest &request) const
 
     const QByteArray bearer = "Bearer " + m_apiKey.trimmed().toUtf8();
     request.setRawHeader("Authorization", bearer);
+}
+
+void AppController::loadProfile(const QString &profileName)
+{
+    const QString trimmed = profileName.trimmed();
+    if (trimmed.isEmpty()) {
+        return;
+    }
+
+    QSettings settings;
+    const QString base = QString("profiles/%1/").arg(trimmed);
+
+    const QString profileProvider = settings.value(base + "provider", m_provider).toString();
+    const QString profileEndpoint = normalizedCompletionUrl(
+        settings.value(base + "endpoint", m_endpoint).toString());
+    const QString profileModelsEndpoint = normalizedModelsOverrideUrl(
+        settings.value(base + "modelsEndpoint", m_modelsEndpoint).toString());
+    const QString profileApiKey = settings.value(base + "apiKey", m_apiKey).toString();
+    const QString profileModel = settings.value(base + "selectedModel", m_selectedModel).toString().trimmed();
+
+    if (providers().contains(profileProvider) && m_provider != profileProvider) {
+        m_provider = profileProvider;
+        emit providerChanged();
+    }
+
+    if (!profileEndpoint.isEmpty() && m_endpoint != profileEndpoint) {
+        m_endpoint = profileEndpoint;
+        emit endpointChanged();
+    }
+
+    if (m_modelsEndpoint != profileModelsEndpoint) {
+        m_modelsEndpoint = profileModelsEndpoint;
+        emit modelsEndpointChanged();
+    }
+
+    if (m_apiKey != profileApiKey) {
+        m_apiKey = profileApiKey;
+        emit apiKeyChanged();
+    }
+
+    if (!profileModel.isEmpty() && m_selectedModel != profileModel) {
+        if (!m_availableModels.contains(profileModel)) {
+            m_availableModels.append(profileModel);
+            emit availableModelsChanged();
+        }
+        m_selectedModel = profileModel;
+        emit selectedModelChanged();
+        emit modelNameChanged();
+    }
+}
+
+void AppController::saveProfileToSettings(const QString &profileName) const
+{
+    const QString trimmed = profileName.trimmed();
+    if (trimmed.isEmpty()) {
+        return;
+    }
+
+    QSettings settings;
+    const QString base = QString("profiles/%1/").arg(trimmed);
+    settings.setValue(base + "provider", m_provider);
+    settings.setValue(base + "endpoint", m_endpoint);
+    settings.setValue(base + "modelsEndpoint", m_modelsEndpoint);
+    settings.setValue(base + "apiKey", m_apiKey);
+    settings.setValue(base + "selectedModel", m_selectedModel);
 }
 
 int AppController::chunkSizeForBacklog(int backlog) const

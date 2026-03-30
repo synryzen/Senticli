@@ -7,6 +7,8 @@ Rectangle {
     id: root
     property string provider: "Custom"
     property var providers: ["Custom", "LM Studio", "Ollama"]
+    property var connectionProfiles: ["Default"]
+    property string activeProfile: "Default"
     property string endpoint: ""
     property string modelsEndpoint: ""
     property string apiKey: ""
@@ -24,6 +26,9 @@ Rectangle {
     property bool streamingActive: false
 
     signal providerSelected(string provider)
+    signal activeProfileSelected(string profileName)
+    signal saveProfileRequested(string profileName)
+    signal deleteProfileRequested(string profileName)
     signal endpointSubmitted(string endpoint)
     signal modelsEndpointSubmitted(string modelsEndpoint)
     signal apiKeySubmitted(string apiKey)
@@ -101,10 +106,67 @@ Rectangle {
                         spacing: 8
 
                         Label {
-                            text: "Provider + Endpoint"
+                            text: "Profile + Provider + Endpoint"
                             color: Colors.textSecondary
                             font.family: Typography.uiFamily
                             font.pixelSize: Typography.smallSize
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            ComboBox {
+                                id: profileCombo
+                                Layout.preferredWidth: 220
+                                model: root.connectionProfiles
+                                font.family: Typography.monoFamily
+                                font.pixelSize: Typography.smallSize
+                                onActivated: root.activeProfileSelected(currentText)
+                            }
+
+                            TextField {
+                                id: profileNameField
+                                Layout.fillWidth: true
+                                placeholderText: "Profile name"
+                                font.family: Typography.monoFamily
+                                font.pixelSize: Typography.smallSize
+                                onAccepted: {
+                                    const value = text.trim()
+                                    if (value.length > 0) {
+                                        root.saveProfileRequested(value)
+                                    }
+                                }
+                            }
+
+                            Button {
+                                text: "Save Profile"
+                                onClicked: {
+                                    const value = profileNameField.text.trim()
+                                    if (value.length > 0) {
+                                        root.saveProfileRequested(value)
+                                        return
+                                    }
+                                    if (profileCombo.currentText.length > 0) {
+                                        root.saveProfileRequested(profileCombo.currentText)
+                                    }
+                                }
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            Button {
+                                text: "Delete"
+                                onClicked: {
+                                    const value = profileNameField.text.trim().length > 0
+                                                    ? profileNameField.text.trim()
+                                                    : profileCombo.currentText
+                                    if (value.length > 0) {
+                                        root.deleteProfileRequested(value)
+                                    }
+                                }
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
                         }
 
                         RowLayout {
@@ -537,6 +599,20 @@ Rectangle {
         }
     }
 
+    onActiveProfileChanged: {
+        const idx = profileCombo.find(activeProfile)
+        if (idx >= 0) {
+            profileCombo.currentIndex = idx
+        }
+    }
+
+    onConnectionProfilesChanged: {
+        const idx = profileCombo.find(activeProfile)
+        if (idx >= 0) {
+            profileCombo.currentIndex = idx
+        }
+    }
+
     onEndpointChanged: {
         endpointField.text = endpoint
     }
@@ -583,7 +659,12 @@ Rectangle {
         ttsSwitch.checked = ttsEnabled
         memorySwitch.checked = memoryEnabled
 
-        let idx = providerCombo.find(provider)
+        let idx = profileCombo.find(activeProfile)
+        if (idx >= 0) {
+            profileCombo.currentIndex = idx
+        }
+
+        idx = providerCombo.find(provider)
         if (idx >= 0) {
             providerCombo.currentIndex = idx
         }

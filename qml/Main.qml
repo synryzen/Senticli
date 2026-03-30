@@ -82,6 +82,8 @@ ApplicationWindow {
         contentItem: SettingsView {
             provider: backend.provider
             providers: backend.providers
+            connectionProfiles: backend.connectionProfiles
+            activeProfile: backend.activeProfile
             endpoint: backend.endpoint
             modelsEndpoint: backend.modelsEndpoint
             apiKey: backend.apiKey
@@ -99,6 +101,15 @@ ApplicationWindow {
             streamingActive: backend.streamingActive
             onProviderSelected: function(name) {
                 backend.setProvider(name)
+            }
+            onActiveProfileSelected: function(name) {
+                backend.setActiveProfile(name)
+            }
+            onSaveProfileRequested: function(name) {
+                backend.saveCurrentProfile(name)
+            }
+            onDeleteProfileRequested: function(name) {
+                backend.deleteProfile(name)
             }
             onEndpointSubmitted: function(value) {
                 backend.setEndpoint(value)

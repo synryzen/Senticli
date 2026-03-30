@@ -26,6 +26,8 @@ class AppController : public QObject
     Q_PROPERTY(QString apiKey READ apiKey WRITE setApiKey NOTIFY apiKeyChanged)
     Q_PROPERTY(QString provider READ provider WRITE setProvider NOTIFY providerChanged)
     Q_PROPERTY(QStringList providers READ providers CONSTANT)
+    Q_PROPERTY(QStringList connectionProfiles READ connectionProfiles NOTIFY connectionProfilesChanged)
+    Q_PROPERTY(QString activeProfile READ activeProfile NOTIFY activeProfileChanged)
     Q_PROPERTY(QStringList availableModels READ availableModels NOTIFY availableModelsChanged)
     Q_PROPERTY(QString selectedModel READ selectedModel WRITE setSelectedModel NOTIFY selectedModelChanged)
     Q_PROPERTY(QString modelStatus READ modelStatus NOTIFY modelStatusChanged)
@@ -58,6 +60,8 @@ public:
     QString modelsEndpoint() const;
     QString apiKey() const;
     QString provider() const;
+    QStringList connectionProfiles() const;
+    QString activeProfile() const;
     QStringList providers() const;
     QStringList availableModels() const;
     QString selectedModel() const;
@@ -87,6 +91,9 @@ public:
     Q_INVOKABLE void setModelsEndpoint(const QString &modelsEndpoint);
     Q_INVOKABLE void setApiKey(const QString &apiKey);
     Q_INVOKABLE void setProvider(const QString &provider);
+    Q_INVOKABLE void setActiveProfile(const QString &profileName);
+    Q_INVOKABLE void saveCurrentProfile(const QString &profileName);
+    Q_INVOKABLE void deleteProfile(const QString &profileName);
     Q_INVOKABLE void setSelectedModel(const QString &model);
     Q_INVOKABLE void setSmoothingProfile(const QString &profile);
     Q_INVOKABLE void setTokenRate(int rate);
@@ -109,6 +116,8 @@ signals:
     void modelsEndpointChanged();
     void apiKeyChanged();
     void providerChanged();
+    void connectionProfilesChanged();
+    void activeProfileChanged();
     void availableModelsChanged();
     void selectedModelChanged();
     void modelStatusChanged();
@@ -169,6 +178,8 @@ private:
     QString normalizedModelsOverrideUrl(const QString &endpoint) const;
     QString modelsUrlFromEndpoint(const QString &endpoint) const;
     void applyAuthHeader(QNetworkRequest &request) const;
+    void loadProfile(const QString &profileName);
+    void saveProfileToSettings(const QString &profileName) const;
     int chunkSizeForBacklog(int backlog) const;
     int flushIntervalForProfile() const;
     bool shouldUseRemoteModel() const;
@@ -182,6 +193,8 @@ private:
     QString m_endpoint = "http://127.0.0.1:1234/v1/chat/completions";
     QString m_modelsEndpoint;
     QString m_apiKey;
+    QStringList m_connectionProfiles;
+    QString m_activeProfile = "Default";
     QStringList m_availableModels = {"local-prototype"};
     QString m_selectedModel = "local-prototype";
     QString m_modelStatus = "Prototype mode (local rules)";

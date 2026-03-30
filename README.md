@@ -22,6 +22,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Typing cursor during stream and cancel button for in-flight responses
 - Adaptive stream smoothing to reduce bursty chunk jumps
 - Dedicated AI Settings panel with:
+  - saved connection profiles (save/load/delete presets)
   - provider + endpoint controls
   - optional models endpoint override
   - optional API key field
@@ -38,6 +39,10 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Slash command parser prototype:
   - `/help`
   - `/provider <Custom|LM Studio|Ollama>`
+  - `/profiles`
+  - `/profile <name>`
+  - `/profile-save <name>`
+  - `/profile-delete <name>`
   - `/endpoint <url>`
   - `/models-endpoint <url|auto>`
   - `/models`
@@ -119,6 +124,7 @@ cmake --build build
 6. If your model does not appear, type the exact model ID and click `Set Typed Model`
 7. Pick smoothing profile (`Cinematic`, `Human`, `Balanced`, or `Terminal`)
 8. Send a normal message (non-slash command) to route it to that model
+9. Save the setup as a profile so you can switch quickly later
 
 You can do the same via commands:
 
@@ -128,6 +134,7 @@ You can do the same via commands:
 /apikey your-token-here
 /models
 /model your-model-id
+/profile-save my-cloudflare-route
 ```
 
 ## Packaging
