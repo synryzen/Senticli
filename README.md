@@ -27,6 +27,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Sentence-level streaming TTS with barge-in interrupt for smoother conversation flow
 - Duplex voice beta (continuous mic chunks + STT endpoint + wake phrase routing)
 - Echo suppression in duplex mode to avoid self-transcription while speaking
+- Tunable duplex controls: VAD sensitivity + smoothness preset (Responsive/Balanced/Natural/Studio)
 - Dedicated AI Settings panel with:
   - saved connection profiles (save/load/delete presets)
   - provider + endpoint controls
@@ -40,6 +41,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - editable wake responses
   - conversational mode toggle
   - duplex voice toggle
+  - duplex smoothness + VAD sensitivity controls
   - STT endpoint + STT model controls
   - personality preset selector
   - voice gender + voice style selectors
@@ -68,6 +70,8 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - `/wake <on|off>`
   - `/conversation <on|off>`
   - `/duplex <on|off>`
+  - `/duplex-smooth <Responsive|Balanced|Natural|Studio>`
+  - `/vad <1-100>`
   - `/stt-endpoint <url|auto>`
   - `/stt-model <id>`
   - `/personality <Helpful|Professional|Witty|Teacher|Hacker|Calm>`
@@ -165,6 +169,8 @@ You can do the same via commands:
 /wake on
 /conversation on
 /duplex on
+/duplex-smooth natural
+/vad 65
 /stt-endpoint https://lm.msidragon.com/v1/audio/transcriptions
 /stt-model whisper-1
 /personality teacher

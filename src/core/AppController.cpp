@@ -60,7 +60,7 @@ AppController::AppController(QObject *parent)
     connect(&m_ttsProcess, &QProcess::started, this, [this]() {
         appendAudit("TTS started");
         m_ttsQueueRunning = true;
-        m_echoSuppressUntilMs = m_runtimeClock.elapsed() + 720;
+        m_echoSuppressUntilMs = m_runtimeClock.elapsed() + echoSuppressStartMs();
         const QString expression = m_speakingExpression;
         QTimer::singleShot(110, this, [this, expression]() {
             if (m_ttsProcess.state() == QProcess::NotRunning) {
@@ -75,7 +75,7 @@ AppController::AppController(QObject *parent)
     connect(&m_ttsProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, [this](int, QProcess::ExitStatus) {
         appendAudit("TTS finished");
         m_ttsQueueRunning = false;
-        m_echoSuppressUntilMs = m_runtimeClock.elapsed() + 260;
+        m_echoSuppressUntilMs = m_runtimeClock.elapsed() + echoSuppressTailMs();
         if (!m_ttsQueue.isEmpty()) {
             startNextTtsChunk();
             return;
@@ -249,6 +249,21 @@ QString AppController::transcriptionEndpoint() const
 QString AppController::transcriptionModel() const
 {
     return m_transcriptionModel;
+}
+
+int AppController::vadSensitivity() const
+{
+    return m_vadSensitivity;
+}
+
+QString AppController::duplexSmoothness() const
+{
+    return m_duplexSmoothness;
+}
+
+QStringList AppController::duplexSmoothnessOptions() const
+{
+    return {"Responsive", "Balanced", "Natural", "Studio"};
 }
 
 QString AppController::personality() const
@@ -818,6 +833,52 @@ void AppController::setTranscriptionModel(const QString &model)
     emit transcriptionModelChanged();
     setModelStatus("Transcription model: " + m_transcriptionModel);
     appendAudit("Transcription model changed: " + m_transcriptionModel);
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
+void AppController::setVadSensitivity(int value)
+{
+    const int clamped = qBound(1, value, 100);
+    if (m_vadSensitivity == clamped) {
+        return;
+    }
+
+    m_vadSensitivity = clamped;
+    emit vadSensitivityChanged();
+    setModelStatus(QString("VAD sensitivity: %1").arg(m_vadSensitivity));
+    appendAudit(QString("VAD sensitivity set: %1").arg(m_vadSensitivity));
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
+void AppController::setDuplexSmoothness(const QString &value)
+{
+    const QString trimmed = value.trimmed();
+    QString resolved;
+    for (const QString &candidate : duplexSmoothnessOptions()) {
+        if (candidate.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            resolved = candidate;
+            break;
+        }
+    }
+
+    if (resolved.isEmpty() || m_duplexSmoothness == resolved) {
+        return;
+    }
+
+    m_duplexSmoothness = resolved;
+    emit duplexSmoothnessChanged();
+    setModelStatus("Duplex smoothness: " + m_duplexSmoothness);
+    appendAudit("Duplex smoothness set: " + m_duplexSmoothness);
+    if (m_micActive && m_duplexVoiceEnabled) {
+        stopVoiceCaptureLoop();
+        startVoiceCaptureLoop();
+    }
     if (!m_activeProfile.isEmpty()) {
         saveProfileToSettings(m_activeProfile);
     }
@@ -1635,7 +1696,7 @@ void AppController::stopSpeaking()
     m_ttsProcess.waitForFinished(300);
     appendAudit("TTS stopped");
     m_ttsQueueRunning = false;
-    m_echoSuppressUntilMs = m_runtimeClock.elapsed() + 200;
+    m_echoSuppressUntilMs = m_runtimeClock.elapsed() + echoSuppressTailMs();
     setSpeakingActive(false);
 }
 
@@ -1719,6 +1780,11 @@ void AppController::loadSettings()
     if (m_transcriptionModel.isEmpty()) {
         m_transcriptionModel = "whisper-1";
     }
+    m_vadSensitivity = qBound(1, settings.value("voice/vadSensitivity", m_vadSensitivity).toInt(), 100);
+    m_duplexSmoothness = settings.value("voice/duplexSmoothness", m_duplexSmoothness).toString();
+    if (!duplexSmoothnessOptions().contains(m_duplexSmoothness)) {
+        m_duplexSmoothness = "Balanced";
+    }
     m_personality = settings.value("ai/personality", m_personality).toString();
     if (!personalities().contains(m_personality)) {
         m_personality = "Helpful";
@@ -1774,6 +1840,8 @@ void AppController::saveSettings() const
     settings.setValue("voice/duplexEnabled", m_duplexVoiceEnabled);
     settings.setValue("voice/transcriptionEndpoint", m_transcriptionEndpoint);
     settings.setValue("voice/transcriptionModel", m_transcriptionModel);
+    settings.setValue("voice/vadSensitivity", m_vadSensitivity);
+    settings.setValue("voice/duplexSmoothness", m_duplexSmoothness);
     settings.setValue("memory/enabled", m_memoryEnabled);
     settings.setValue("permissions/grantedFolders", m_grantedFolders);
     settings.setValue("ui/setupComplete", m_setupComplete);
@@ -1930,6 +1998,8 @@ void AppController::handleInput(const QString &text)
             "/wake on|off\n"
             "/conversation on|off\n"
             "/duplex on|off\n"
+            "/duplex-smooth <Responsive|Balanced|Natural|Studio>\n"
+            "/vad <1-100>\n"
             "/stt-endpoint <url>\n"
             "/stt-model <id>\n"
             "/personality <Helpful|Professional|Witty|Teacher|Hacker|Calm>\n"
@@ -2104,6 +2174,34 @@ void AppController::handleInput(const QString &text)
             return;
         }
         postAssistant("Usage: /duplex on|off", "warning");
+        return;
+    }
+
+    if (lowered.startsWith("/duplex-smooth ")) {
+        const QString value = text.mid(15).trimmed();
+        bool valid = false;
+        for (const QString &candidate : duplexSmoothnessOptions()) {
+            if (candidate.compare(value, Qt::CaseInsensitive) == 0) {
+                valid = true;
+                break;
+            }
+        }
+        if (!valid) {
+            postAssistant("Usage: /duplex-smooth <Responsive|Balanced|Natural|Studio>", "warning");
+            return;
+        }
+        setDuplexSmoothness(value);
+        return;
+    }
+
+    if (lowered.startsWith("/vad ")) {
+        bool ok = false;
+        const int value = text.mid(5).trimmed().toInt(&ok);
+        if (!ok) {
+            postAssistant("Usage: /vad <1-100>", "warning");
+            return;
+        }
+        setVadSensitivity(value);
         return;
     }
 
@@ -2625,14 +2723,15 @@ void AppController::runVoiceCaptureChunk()
     QFile::remove(m_voiceCaptureTempPath);
 
     m_voiceCaptureRunning = true;
+    const QString chunkSeconds = QString::number(voiceChunkSeconds());
     m_voiceCaptureProcess.start(
         arecordBin,
-        {"-q", "-f", "S16_LE", "-r", "16000", "-c", "1", "-d", "2", "-t", "wav", m_voiceCaptureTempPath});
+        {"-q", "-f", "S16_LE", "-r", "16000", "-c", "1", "-d", chunkSeconds, "-t", "wav", m_voiceCaptureTempPath});
     if (!m_voiceCaptureProcess.waitForStarted(150)) {
         m_voiceCaptureRunning = false;
         setModelStatus("Unable to start arecord for duplex voice");
         if (m_duplexVoiceEnabled && m_micActive) {
-            m_voiceCaptureRestartTimer.start(400);
+            m_voiceCaptureRestartTimer.start(qMax(180, voiceRestartDelayMs() * 3));
         }
     }
 }
@@ -2655,7 +2754,7 @@ void AppController::handleVoiceCaptureFinished(int exitCode, QProcess::ExitStatu
             if (nowMs < m_echoSuppressUntilMs || isAssistantAudible()) {
                 appendAudit("Voice chunk ignored (assistant speaking)");
             } else {
-                if (actionRunning() && nowMs - m_lastBargeInMs > 550) {
+                if (actionRunning() && nowMs - m_lastBargeInMs > voiceBargeDebounceMs()) {
                     m_lastBargeInMs = nowMs;
                     appendAudit("Voice barge-in detected");
                     cancelActiveRequest();
@@ -2666,7 +2765,7 @@ void AppController::handleVoiceCaptureFinished(int exitCode, QProcess::ExitStatu
     }
 
     if (m_duplexVoiceEnabled && m_micActive) {
-        m_voiceCaptureRestartTimer.start(60);
+        m_voiceCaptureRestartTimer.start(voiceRestartDelayMs());
     }
 }
 
@@ -2694,7 +2793,7 @@ bool AppController::wavHasSpeech(const QByteArray &wavData) const
     }
 
     const qint64 avg = sumAbs / samples;
-    return avg > 700;
+    return avg > vadAmplitudeThreshold();
 }
 
 void AppController::requestTranscription(const QByteArray &wavData)
@@ -2849,6 +2948,83 @@ QString AppController::expressionFromAssistantText(const QString &text, const QS
     }
 
     return "speaking";
+}
+
+int AppController::voiceChunkSeconds() const
+{
+    if (m_duplexSmoothness == "Responsive") {
+        return 1;
+    }
+    if (m_duplexSmoothness == "Natural") {
+        return 3;
+    }
+    if (m_duplexSmoothness == "Studio") {
+        return 4;
+    }
+    return 2;
+}
+
+int AppController::voiceRestartDelayMs() const
+{
+    if (m_duplexSmoothness == "Responsive") {
+        return 30;
+    }
+    if (m_duplexSmoothness == "Natural") {
+        return 90;
+    }
+    if (m_duplexSmoothness == "Studio") {
+        return 120;
+    }
+    return 60;
+}
+
+int AppController::voiceBargeDebounceMs() const
+{
+    if (m_duplexSmoothness == "Responsive") {
+        return 320;
+    }
+    if (m_duplexSmoothness == "Natural") {
+        return 700;
+    }
+    if (m_duplexSmoothness == "Studio") {
+        return 900;
+    }
+    return 550;
+}
+
+int AppController::echoSuppressStartMs() const
+{
+    if (m_duplexSmoothness == "Responsive") {
+        return 420;
+    }
+    if (m_duplexSmoothness == "Natural") {
+        return 860;
+    }
+    if (m_duplexSmoothness == "Studio") {
+        return 980;
+    }
+    return 720;
+}
+
+int AppController::echoSuppressTailMs() const
+{
+    if (m_duplexSmoothness == "Responsive") {
+        return 140;
+    }
+    if (m_duplexSmoothness == "Natural") {
+        return 320;
+    }
+    if (m_duplexSmoothness == "Studio") {
+        return 380;
+    }
+    return 260;
+}
+
+int AppController::vadAmplitudeThreshold() const
+{
+    const int sensitivity = qBound(1, m_vadSensitivity, 100);
+    const int threshold = 1500 - (sensitivity * 13);
+    return qBound(180, threshold, 1400);
 }
 
 QString AppController::normalizedTranscriptionUrl(const QString &endpoint) const
@@ -3078,6 +3254,8 @@ void AppController::loadProfile(const QString &profileName)
     const QString profileTranscriptionEndpoint = normalizedTranscriptionUrl(
         settings.value(base + "transcriptionEndpoint", m_transcriptionEndpoint).toString());
     QString profileTranscriptionModel = settings.value(base + "transcriptionModel", m_transcriptionModel).toString().trimmed();
+    const int profileVadSensitivity = qBound(1, settings.value(base + "vadSensitivity", m_vadSensitivity).toInt(), 100);
+    const QString profileDuplexSmoothness = settings.value(base + "duplexSmoothness", m_duplexSmoothness).toString();
     if (profileTranscriptionModel.isEmpty()) {
         profileTranscriptionModel = m_transcriptionModel;
     }
@@ -3176,6 +3354,17 @@ void AppController::loadProfile(const QString &profileName)
         m_transcriptionModel = profileTranscriptionModel;
         emit transcriptionModelChanged();
     }
+
+    if (m_vadSensitivity != profileVadSensitivity) {
+        m_vadSensitivity = profileVadSensitivity;
+        emit vadSensitivityChanged();
+    }
+
+    if (duplexSmoothnessOptions().contains(profileDuplexSmoothness)
+        && m_duplexSmoothness != profileDuplexSmoothness) {
+        m_duplexSmoothness = profileDuplexSmoothness;
+        emit duplexSmoothnessChanged();
+    }
 }
 
 void AppController::saveProfileToSettings(const QString &profileName) const
@@ -3204,6 +3393,8 @@ void AppController::saveProfileToSettings(const QString &profileName) const
     settings.setValue(base + "duplexVoiceEnabled", m_duplexVoiceEnabled);
     settings.setValue(base + "transcriptionEndpoint", m_transcriptionEndpoint);
     settings.setValue(base + "transcriptionModel", m_transcriptionModel);
+    settings.setValue(base + "vadSensitivity", m_vadSensitivity);
+    settings.setValue(base + "duplexSmoothness", m_duplexSmoothness);
 }
 
 int AppController::chunkSizeForBacklog(int backlog) const

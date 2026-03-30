@@ -42,6 +42,9 @@ class AppController : public QObject
     Q_PROPERTY(bool duplexVoiceEnabled READ duplexVoiceEnabled WRITE setDuplexVoiceEnabled NOTIFY duplexVoiceEnabledChanged)
     Q_PROPERTY(QString transcriptionEndpoint READ transcriptionEndpoint WRITE setTranscriptionEndpoint NOTIFY transcriptionEndpointChanged)
     Q_PROPERTY(QString transcriptionModel READ transcriptionModel WRITE setTranscriptionModel NOTIFY transcriptionModelChanged)
+    Q_PROPERTY(int vadSensitivity READ vadSensitivity WRITE setVadSensitivity NOTIFY vadSensitivityChanged)
+    Q_PROPERTY(QString duplexSmoothness READ duplexSmoothness WRITE setDuplexSmoothness NOTIFY duplexSmoothnessChanged)
+    Q_PROPERTY(QStringList duplexSmoothnessOptions READ duplexSmoothnessOptions CONSTANT)
     Q_PROPERTY(QString personality READ personality WRITE setPersonality NOTIFY personalityChanged)
     Q_PROPERTY(QStringList personalities READ personalities CONSTANT)
     Q_PROPERTY(QString gender READ gender WRITE setGender NOTIFY genderChanged)
@@ -90,6 +93,9 @@ public:
     bool duplexVoiceEnabled() const;
     QString transcriptionEndpoint() const;
     QString transcriptionModel() const;
+    int vadSensitivity() const;
+    QString duplexSmoothness() const;
+    QStringList duplexSmoothnessOptions() const;
     QString personality() const;
     QStringList personalities() const;
     QString gender() const;
@@ -131,6 +137,8 @@ public:
     Q_INVOKABLE void setDuplexVoiceEnabled(bool enabled);
     Q_INVOKABLE void setTranscriptionEndpoint(const QString &endpoint);
     Q_INVOKABLE void setTranscriptionModel(const QString &model);
+    Q_INVOKABLE void setVadSensitivity(int value);
+    Q_INVOKABLE void setDuplexSmoothness(const QString &value);
     Q_INVOKABLE void setPersonality(const QString &personality);
     Q_INVOKABLE void setGender(const QString &gender);
     Q_INVOKABLE void setVoiceStyle(const QString &voiceStyle);
@@ -167,6 +175,8 @@ signals:
     void duplexVoiceEnabledChanged();
     void transcriptionEndpointChanged();
     void transcriptionModelChanged();
+    void vadSensitivityChanged();
+    void duplexSmoothnessChanged();
     void personalityChanged();
     void genderChanged();
     void voiceStyleChanged();
@@ -216,6 +226,12 @@ private:
     void routeVoiceTranscript(const QString &text);
     bool isAssistantAudible() const;
     QString expressionFromAssistantText(const QString &text, const QString &kind = "assistant") const;
+    int voiceChunkSeconds() const;
+    int voiceRestartDelayMs() const;
+    int voiceBargeDebounceMs() const;
+    int echoSuppressStartMs() const;
+    int echoSuppressTailMs() const;
+    int vadAmplitudeThreshold() const;
     QString normalizedTranscriptionUrl(const QString &endpoint) const;
     QString currentProjectKey() const;
     QString appDataDir() const;
@@ -276,6 +292,8 @@ private:
     bool m_duplexVoiceEnabled = false;
     QString m_transcriptionEndpoint;
     QString m_transcriptionModel = "whisper-1";
+    int m_vadSensitivity = 50;
+    QString m_duplexSmoothness = "Balanced";
     QString m_personality = "Helpful";
     QString m_gender = "Neutral";
     QString m_voiceStyle = "Default";

@@ -25,6 +25,9 @@ Rectangle {
     property bool duplexVoiceEnabled: false
     property string transcriptionEndpoint: ""
     property string transcriptionModel: "whisper-1"
+    property int vadSensitivity: 50
+    property string duplexSmoothness: "Balanced"
+    property var duplexSmoothnessOptions: ["Responsive", "Balanced", "Natural", "Studio"]
     property string personality: "Helpful"
     property var personalities: ["Helpful", "Professional", "Witty", "Teacher", "Hacker", "Calm"]
     property string gender: "Neutral"
@@ -57,6 +60,8 @@ Rectangle {
     signal duplexVoiceEnabledToggled(bool enabled)
     signal transcriptionEndpointSubmitted(string endpoint)
     signal transcriptionModelSubmitted(string model)
+    signal vadSensitivitySelected(int value)
+    signal duplexSmoothnessSelected(string value)
     signal personalitySelected(string personality)
     signal genderSelected(string gender)
     signal voiceStyleSelected(string voiceStyle)
@@ -391,6 +396,55 @@ Rectangle {
                             }
 
                             Item { Layout.fillWidth: true }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Label {
+                                text: "Duplex Smoothness"
+                                color: Colors.textSecondary
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            ComboBox {
+                                id: duplexSmoothnessCombo
+                                Layout.preferredWidth: 180
+                                model: root.duplexSmoothnessOptions
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                                onActivated: root.duplexSmoothnessSelected(currentText)
+                            }
+
+                            Label {
+                                text: "VAD Sensitivity"
+                                color: Colors.textSecondary
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            Slider {
+                                id: vadSensitivitySlider
+                                Layout.fillWidth: true
+                                from: 1
+                                to: 100
+                                stepSize: 1
+                                live: false
+                                onMoved: root.vadSensitivitySelected(Math.round(value))
+                                onPressedChanged: {
+                                    if (!pressed) {
+                                        root.vadSensitivitySelected(Math.round(value))
+                                    }
+                                }
+                            }
+
+                            Label {
+                                text: Math.round(vadSensitivitySlider.value).toString()
+                                color: Colors.textPrimary
+                                font.family: Typography.monoFamily
+                                font.pixelSize: Typography.smallSize
+                            }
                         }
 
                         Label {
@@ -901,6 +955,17 @@ Rectangle {
         sttModelField.text = transcriptionModel
     }
 
+    onVadSensitivityChanged: {
+        vadSensitivitySlider.value = vadSensitivity
+    }
+
+    onDuplexSmoothnessChanged: {
+        const idx = duplexSmoothnessCombo.find(duplexSmoothness)
+        if (idx >= 0) {
+            duplexSmoothnessCombo.currentIndex = idx
+        }
+    }
+
     onTtsEnabledChanged: {
         ttsSwitch.checked = ttsEnabled
     }
@@ -921,6 +986,7 @@ Rectangle {
         duplexVoiceSwitch.checked = duplexVoiceEnabled
         sttEndpointField.text = transcriptionEndpoint
         sttModelField.text = transcriptionModel
+        vadSensitivitySlider.value = vadSensitivity
         ttsSwitch.checked = ttsEnabled
         memorySwitch.checked = memoryEnabled
 
@@ -957,6 +1023,11 @@ Rectangle {
         idx = voiceStyleCombo.find(voiceStyle)
         if (idx >= 0) {
             voiceStyleCombo.currentIndex = idx
+        }
+
+        idx = duplexSmoothnessCombo.find(duplexSmoothness)
+        if (idx >= 0) {
+            duplexSmoothnessCombo.currentIndex = idx
         }
     }
 }

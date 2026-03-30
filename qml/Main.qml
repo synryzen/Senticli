@@ -101,6 +101,9 @@ ApplicationWindow {
             duplexVoiceEnabled: backend.duplexVoiceEnabled
             transcriptionEndpoint: backend.transcriptionEndpoint
             transcriptionModel: backend.transcriptionModel
+            vadSensitivity: backend.vadSensitivity
+            duplexSmoothness: backend.duplexSmoothness
+            duplexSmoothnessOptions: backend.duplexSmoothnessOptions
             personality: backend.personality
             personalities: backend.personalities
             gender: backend.gender
@@ -169,6 +172,12 @@ ApplicationWindow {
             }
             onTranscriptionModelSubmitted: function(value) {
                 backend.setTranscriptionModel(value)
+            }
+            onVadSensitivitySelected: function(value) {
+                backend.setVadSensitivity(value)
+            }
+            onDuplexSmoothnessSelected: function(value) {
+                backend.setDuplexSmoothness(value)
             }
             onPersonalitySelected: function(value) {
                 backend.setPersonality(value)
