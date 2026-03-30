@@ -121,6 +121,9 @@ ApplicationWindow {
             genders: backend.genders
             voiceStyle: backend.voiceStyle
             voiceStyles: backend.voiceStyles
+            voiceEngine: backend.voiceEngine
+            voiceEngines: backend.voiceEngines
+            piperModelPath: backend.piperModelPath
             ttsEnabled: backend.ttsEnabled
             memoryEnabled: backend.memoryEnabled
             grantedFolders: backend.grantedFolders
@@ -210,6 +213,12 @@ ApplicationWindow {
             }
             onVoiceStyleSelected: function(value) {
                 backend.setVoiceStyle(value)
+            }
+            onVoiceEngineSelected: function(value) {
+                backend.setVoiceEngine(value)
+            }
+            onPiperModelPathSubmitted: function(value) {
+                backend.setPiperModelPath(value)
             }
             onTtsToggledRequested: function(enabled) {
                 backend.setTtsEnabled(enabled)

@@ -39,6 +39,9 @@ Rectangle {
     property var genders: ["Neutral", "Male", "Female"]
     property string voiceStyle: "Default"
     property var voiceStyles: ["Default", "Soft", "Bright", "Narrator"]
+    property string voiceEngine: "Auto"
+    property var voiceEngines: ["Auto", "Speech Dispatcher", "eSpeak", "Piper"]
+    property string piperModelPath: ""
     property bool ttsEnabled: false
     property bool memoryEnabled: true
     property var grantedFolders: []
@@ -74,6 +77,8 @@ Rectangle {
     signal faceStyleSelected(string faceStyle)
     signal genderSelected(string gender)
     signal voiceStyleSelected(string voiceStyle)
+    signal voiceEngineSelected(string voiceEngine)
+    signal piperModelPathSubmitted(string path)
     signal ttsToggledRequested(bool enabled)
     signal memoryToggledRequested(bool enabled)
     signal addFolderRequested(string folder)
@@ -767,6 +772,42 @@ Rectangle {
                             Layout.fillWidth: true
 
                             Label {
+                                text: "Voice Engine"
+                                color: Colors.textSecondary
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            ComboBox {
+                                id: voiceEngineCombo
+                                Layout.preferredWidth: 190
+                                model: root.voiceEngines
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                                onActivated: root.voiceEngineSelected(currentText)
+                            }
+
+                            TextField {
+                                id: piperModelField
+                                Layout.fillWidth: true
+                                placeholderText: "Piper model path (.onnx) or leave blank"
+                                font.family: Typography.monoFamily
+                                font.pixelSize: Typography.smallSize
+                                onAccepted: root.piperModelPathSubmitted(text)
+                            }
+
+                            Button {
+                                text: "Set Piper Model"
+                                onClicked: root.piperModelPathSubmitted(piperModelField.text)
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Label {
                                 text: "Token Rate"
                                 color: Colors.textSecondary
                                 font.family: Typography.uiFamily
@@ -1066,6 +1107,17 @@ Rectangle {
         }
     }
 
+    onVoiceEngineChanged: {
+        const idx = voiceEngineCombo.find(voiceEngine)
+        if (idx >= 0) {
+            voiceEngineCombo.currentIndex = idx
+        }
+    }
+
+    onPiperModelPathChanged: {
+        piperModelField.text = piperModelPath
+    }
+
     onTokenRateChanged: {
         tokenRateSlider.value = tokenRate
     }
@@ -1138,6 +1190,7 @@ Rectangle {
         vadSensitivitySlider.value = vadSensitivity
         ttsSwitch.checked = ttsEnabled
         memorySwitch.checked = memoryEnabled
+        piperModelField.text = piperModelPath
 
         let idx = profileCombo.find(activeProfile)
         if (idx >= 0) {
@@ -1177,6 +1230,11 @@ Rectangle {
         idx = voiceStyleCombo.find(voiceStyle)
         if (idx >= 0) {
             voiceStyleCombo.currentIndex = idx
+        }
+
+        idx = voiceEngineCombo.find(voiceEngine)
+        if (idx >= 0) {
+            voiceEngineCombo.currentIndex = idx
         }
 
         idx = duplexSmoothnessCombo.find(duplexSmoothness)

@@ -53,6 +53,8 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - STT endpoint + STT model controls
   - personality preset selector
   - voice gender + voice style selectors
+  - voice engine selector (`Auto`, `Speech Dispatcher`, `eSpeak`, `Piper`)
+  - optional Piper model path
   - voice and memory toggles
   - granted folder permissions manager
   - audit log viewer/clear
@@ -89,6 +91,8 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - `/face-style <Loona|Terminal|Orb>`
   - `/gender <Neutral|Male|Female>`
   - `/voice-style <Default|Soft|Bright|Narrator>`
+  - `/voice-engine <Auto|Speech Dispatcher|eSpeak|Piper>`
+  - `/piper-model <path|clear>`
   - `/voices`
   - `/grant <folder>`
   - `/revoke <folder>`
@@ -148,6 +152,8 @@ sudo apt install -y \
 
 For camera snapshot analysis, install `ffmpeg`.
 
+For realistic local voices with Piper, install `piper` (and keep `aplay` from `alsa-utils`).
+
 If your distro package names differ, install equivalent Qt 6 Quick + QML + Quick Controls dev/runtime modules.
 
 ## Build and Run
@@ -194,6 +200,8 @@ You can do the same via commands:
 /personality teacher
 /gender female
 /voice-style narrator
+/voice-engine Piper
+/piper-model /home/you/models/en_US-lessac-medium.onnx
 /profile-save my-cloudflare-route
 ```
 

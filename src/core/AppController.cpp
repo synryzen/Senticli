@@ -28,6 +28,13 @@ QString expandPath(const QString &raw)
     }
     return QDir::cleanPath(path);
 }
+
+QString shellQuote(const QString &value)
+{
+    QString escaped = value;
+    escaped.replace("'", "'\"'\"'");
+    return "'" + escaped + "'";
+}
 } // namespace
 
 AppController::AppController(QObject *parent)
@@ -333,6 +340,21 @@ QString AppController::voiceStyle() const
 QStringList AppController::voiceStyles() const
 {
     return {"Default", "Soft", "Bright", "Narrator"};
+}
+
+QString AppController::voiceEngine() const
+{
+    return m_voiceEngine;
+}
+
+QStringList AppController::voiceEngines() const
+{
+    return {"Auto", "Speech Dispatcher", "eSpeak", "Piper"};
+}
+
+QString AppController::piperModelPath() const
+{
+    return m_piperModelPath;
 }
 
 bool AppController::ttsEnabled() const
@@ -1364,6 +1386,53 @@ void AppController::setVoiceStyle(const QString &voiceStyle)
     saveSettings();
 }
 
+void AppController::setVoiceEngine(const QString &voiceEngine)
+{
+    const QString trimmed = voiceEngine.trimmed();
+    QString resolved;
+    for (const QString &candidate : voiceEngines()) {
+        if (candidate.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            resolved = candidate;
+            break;
+        }
+    }
+    if (resolved.isEmpty() || m_voiceEngine == resolved) {
+        return;
+    }
+
+    m_voiceEngine = resolved;
+    m_ttsBinary.clear();
+    emit voiceEngineChanged();
+    setModelStatus(QString("Voice engine: %1").arg(m_voiceEngine));
+    appendAudit("Voice engine set: " + m_voiceEngine);
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
+void AppController::setPiperModelPath(const QString &path)
+{
+    const QString normalized = expandPath(path);
+    if (m_piperModelPath == normalized) {
+        return;
+    }
+
+    m_piperModelPath = normalized;
+    emit piperModelPathChanged();
+    if (m_piperModelPath.isEmpty()) {
+        setModelStatus("Piper model path cleared");
+        appendAudit("Piper model path cleared");
+    } else {
+        setModelStatus("Piper model: " + m_piperModelPath);
+        appendAudit("Piper model path set: " + m_piperModelPath);
+    }
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
 void AppController::setTtsEnabled(bool enabled)
 {
     if (m_ttsEnabled == enabled) {
@@ -1988,11 +2057,55 @@ bool AppController::speakText(const QString &text)
     }
 
     if (m_ttsBinary.isEmpty()) {
-        appendAudit("No TTS backend found (needs spd-say or espeak)");
+        appendAudit("No TTS backend found (needs spd-say, espeak, or piper)");
         return false;
     }
 
     stopSpeaking();
+
+    if (m_ttsBinary.endsWith("piper")) {
+        if (m_piperModelPath.trimmed().isEmpty()) {
+            appendAudit("Piper selected but no model path configured");
+            return false;
+        }
+        const QString modelPath = expandPath(m_piperModelPath);
+        if (!QFileInfo::exists(modelPath)) {
+            appendAudit("Piper model file not found: " + modelPath);
+            return false;
+        }
+
+        const QString aplay = QStandardPaths::findExecutable("aplay");
+        if (aplay.isEmpty()) {
+            appendAudit("Piper playback requires aplay");
+            return false;
+        }
+
+        qreal lengthScale = 1.0;
+        if (m_voiceStyle == "Soft") {
+            lengthScale = 1.12;
+        } else if (m_voiceStyle == "Bright") {
+            lengthScale = 0.92;
+        } else if (m_voiceStyle == "Narrator") {
+            lengthScale = 1.24;
+        }
+
+        const QString outWav = appDataDir() + "/piper_tts.wav";
+        const QString command = QString("printf %%s %1 | %2 --model %3 --length_scale %4 --output_file %5 && %6 -q %5")
+                                    .arg(shellQuote(toSpeak),
+                                         shellQuote(m_ttsBinary),
+                                         shellQuote(modelPath),
+                                         QString::number(lengthScale, 'f', 2),
+                                         shellQuote(outWav),
+                                         shellQuote(aplay));
+
+        m_ttsProcess.start("/bin/bash", {"-lc", command});
+        if (m_ttsProcess.waitForStarted(650)) {
+            return true;
+        }
+
+        appendAudit("Piper TTS failed: " + m_ttsProcess.errorString());
+        return false;
+    }
 
     QStringList args;
     QStringList fallbackArgs;
@@ -2266,6 +2379,11 @@ void AppController::loadSettings()
     if (!voiceStyles().contains(m_voiceStyle)) {
         m_voiceStyle = "Default";
     }
+    m_voiceEngine = settings.value("voice/engine", m_voiceEngine).toString();
+    if (!voiceEngines().contains(m_voiceEngine)) {
+        m_voiceEngine = "Auto";
+    }
+    m_piperModelPath = expandPath(settings.value("voice/piperModelPath", m_piperModelPath).toString());
     m_ttsEnabled = settings.value("voice/ttsEnabled", m_ttsEnabled).toBool();
     m_memoryEnabled = settings.value("memory/enabled", m_memoryEnabled).toBool();
     m_setupComplete = settings.value("ui/setupComplete", false).toBool();
@@ -2308,6 +2426,8 @@ void AppController::saveSettings() const
     settings.setValue("ai/gender", m_gender);
     settings.setValue("voice/ttsEnabled", m_ttsEnabled);
     settings.setValue("voice/style", m_voiceStyle);
+    settings.setValue("voice/engine", m_voiceEngine);
+    settings.setValue("voice/piperModelPath", m_piperModelPath);
     settings.setValue("voice/duplexEnabled", m_duplexVoiceEnabled);
     settings.setValue("voice/transcriptionEndpoint", m_transcriptionEndpoint);
     settings.setValue("voice/transcriptionModel", m_transcriptionModel);
@@ -2439,13 +2559,29 @@ QString AppController::projectMemoryContext() const
 
 QString AppController::findTtsBinary() const
 {
+    const QString engine = m_voiceEngine.trimmed();
+
+    if (engine == "Speech Dispatcher") {
+        return QStandardPaths::findExecutable("spd-say");
+    }
+    if (engine == "eSpeak") {
+        return QStandardPaths::findExecutable("espeak");
+    }
+    if (engine == "Piper") {
+        return QStandardPaths::findExecutable("piper");
+    }
+
     QString bin = QStandardPaths::findExecutable("spd-say");
     if (!bin.isEmpty()) {
         return bin;
     }
 
     bin = QStandardPaths::findExecutable("espeak");
-    return bin;
+    if (!bin.isEmpty()) {
+        return bin;
+    }
+
+    return QStandardPaths::findExecutable("piper");
 }
 
 void AppController::handleInput(const QString &text)
@@ -2481,6 +2617,8 @@ void AppController::handleInput(const QString &text)
             "/face-style <Loona|Terminal|Orb>\n"
             "/gender <Neutral|Male|Female>\n"
             "/voice-style <Default|Soft|Bright|Narrator>\n"
+            "/voice-engine <Auto|Speech Dispatcher|eSpeak|Piper>\n"
+            "/piper-model <path|clear>\n"
             "/voices\n"
             "/test\n"
             "/run <command>\n"
@@ -2507,8 +2645,12 @@ void AppController::handleInput(const QString &text)
 
     if (lowered == "/voices") {
         postAssistant(
-            QString("Voice options:\nGender: %1\nStyle: %2")
-                .arg(genders().join(", "), voiceStyles().join(", ")));
+            QString("Voice options:\nGender: %1\nStyle: %2\nEngine: %3\nCurrent engine: %4\nPiper model: %5")
+                .arg(genders().join(", "),
+                     voiceStyles().join(", "),
+                     voiceEngines().join(", "),
+                     m_voiceEngine,
+                     m_piperModelPath.isEmpty() ? "(not set)" : m_piperModelPath));
         return;
     }
 
@@ -2767,6 +2909,33 @@ void AppController::handleInput(const QString &text)
 
     if (lowered.startsWith("/voice-style ")) {
         setVoiceStyle(text.mid(13).trimmed());
+        return;
+    }
+
+    if (lowered.startsWith("/voice-engine ")) {
+        const QString value = text.mid(14).trimmed();
+        bool valid = false;
+        for (const QString &candidate : voiceEngines()) {
+            if (candidate.compare(value, Qt::CaseInsensitive) == 0) {
+                valid = true;
+                break;
+            }
+        }
+        if (!valid) {
+            postAssistant("Usage: /voice-engine <Auto|Speech Dispatcher|eSpeak|Piper>", "warning");
+            return;
+        }
+        setVoiceEngine(value);
+        return;
+    }
+
+    if (lowered.startsWith("/piper-model ")) {
+        const QString value = text.mid(13).trimmed();
+        if (value.toLower() == "clear" || value.toLower() == "none") {
+            setPiperModelPath("");
+            return;
+        }
+        setPiperModelPath(value);
         return;
     }
 
@@ -3174,9 +3343,9 @@ QString AppController::systemPersonaPrompt() const
     return QString(
                "You are %1, a local Linux terminal companion. "
                "Keep replies %2. %3 "
-               "Current presentation preferences: personality=%4, face-style=%5, voice-gender=%6, voice-style=%7. "
+               "Current presentation preferences: personality=%4, face-style=%5, voice-gender=%6, voice-style=%7, voice-engine=%8. "
                "When suggesting actions, be explicit and safe.")
-        .arg(m_assistantName, tone, conversationInstruction, m_personality, m_faceStyle, m_gender, m_voiceStyle);
+        .arg(m_assistantName, tone, conversationInstruction, m_personality, m_faceStyle, m_gender, m_voiceStyle, m_voiceEngine);
 }
 
 void AppController::postAssistant(const QString &text, const QString &kind)
@@ -3873,6 +4042,9 @@ void AppController::loadProfile(const QString &profileName)
     const QString profileFaceStyle = settings.value(base + "faceStyle", m_faceStyle).toString();
     const QString profileGender = settings.value(base + "gender", m_gender).toString();
     const QString profileVoiceStyle = settings.value(base + "voiceStyle", m_voiceStyle).toString();
+    const QString profileVoiceEngine = settings.value(base + "voiceEngine", m_voiceEngine).toString();
+    const QString profilePiperModelPath = expandPath(
+        settings.value(base + "piperModelPath", m_piperModelPath).toString());
     const bool profileDuplexVoiceEnabled = settings.value(base + "duplexVoiceEnabled", m_duplexVoiceEnabled).toBool();
     const QString profileTranscriptionEndpoint = normalizedTranscriptionUrl(
         settings.value(base + "transcriptionEndpoint", m_transcriptionEndpoint).toString());
@@ -3978,6 +4150,17 @@ void AppController::loadProfile(const QString &profileName)
         emit voiceStyleChanged();
     }
 
+    if (voiceEngines().contains(profileVoiceEngine) && m_voiceEngine != profileVoiceEngine) {
+        m_voiceEngine = profileVoiceEngine;
+        m_ttsBinary.clear();
+        emit voiceEngineChanged();
+    }
+
+    if (m_piperModelPath != profilePiperModelPath) {
+        m_piperModelPath = profilePiperModelPath;
+        emit piperModelPathChanged();
+    }
+
     if (m_duplexVoiceEnabled != profileDuplexVoiceEnabled) {
         m_duplexVoiceEnabled = profileDuplexVoiceEnabled;
         emit duplexVoiceEnabledChanged();
@@ -4031,6 +4214,8 @@ void AppController::saveProfileToSettings(const QString &profileName) const
     settings.setValue(base + "faceStyle", m_faceStyle);
     settings.setValue(base + "gender", m_gender);
     settings.setValue(base + "voiceStyle", m_voiceStyle);
+    settings.setValue(base + "voiceEngine", m_voiceEngine);
+    settings.setValue(base + "piperModelPath", m_piperModelPath);
     settings.setValue(base + "duplexVoiceEnabled", m_duplexVoiceEnabled);
     settings.setValue(base + "transcriptionEndpoint", m_transcriptionEndpoint);
     settings.setValue(base + "transcriptionModel", m_transcriptionModel);

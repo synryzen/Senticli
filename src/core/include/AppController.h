@@ -56,6 +56,9 @@ class AppController : public QObject
     Q_PROPERTY(QStringList genders READ genders CONSTANT)
     Q_PROPERTY(QString voiceStyle READ voiceStyle WRITE setVoiceStyle NOTIFY voiceStyleChanged)
     Q_PROPERTY(QStringList voiceStyles READ voiceStyles CONSTANT)
+    Q_PROPERTY(QString voiceEngine READ voiceEngine WRITE setVoiceEngine NOTIFY voiceEngineChanged)
+    Q_PROPERTY(QStringList voiceEngines READ voiceEngines CONSTANT)
+    Q_PROPERTY(QString piperModelPath READ piperModelPath WRITE setPiperModelPath NOTIFY piperModelPathChanged)
     Q_PROPERTY(bool ttsEnabled READ ttsEnabled WRITE setTtsEnabled NOTIFY ttsEnabledChanged)
     Q_PROPERTY(bool memoryEnabled READ memoryEnabled WRITE setMemoryEnabled NOTIFY memoryEnabledChanged)
     Q_PROPERTY(QStringList grantedFolders READ grantedFolders NOTIFY grantedFoldersChanged)
@@ -114,6 +117,9 @@ public:
     QStringList genders() const;
     QString voiceStyle() const;
     QStringList voiceStyles() const;
+    QString voiceEngine() const;
+    QStringList voiceEngines() const;
+    QString piperModelPath() const;
     bool ttsEnabled() const;
     bool memoryEnabled() const;
     QStringList grantedFolders() const;
@@ -161,6 +167,8 @@ public:
     Q_INVOKABLE void setFaceStyle(const QString &faceStyle);
     Q_INVOKABLE void setGender(const QString &gender);
     Q_INVOKABLE void setVoiceStyle(const QString &voiceStyle);
+    Q_INVOKABLE void setVoiceEngine(const QString &voiceEngine);
+    Q_INVOKABLE void setPiperModelPath(const QString &path);
     Q_INVOKABLE void setTtsEnabled(bool enabled);
     Q_INVOKABLE void setMemoryEnabled(bool enabled);
     Q_INVOKABLE void refreshModels();
@@ -203,6 +211,8 @@ signals:
     void faceStyleChanged();
     void genderChanged();
     void voiceStyleChanged();
+    void voiceEngineChanged();
+    void piperModelPathChanged();
     void ttsEnabledChanged();
     void memoryEnabledChanged();
     void grantedFoldersChanged();
@@ -331,6 +341,8 @@ private:
     QString m_faceStyle = "Loona";
     QString m_gender = "Neutral";
     QString m_voiceStyle = "Default";
+    QString m_voiceEngine = "Auto";
+    QString m_piperModelPath;
     bool m_ttsEnabled = false;
     bool m_memoryEnabled = true;
     bool m_setupComplete = false;
