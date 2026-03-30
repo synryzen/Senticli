@@ -6,15 +6,16 @@ import Senticli
 Rectangle {
     id: root
     property bool actionRunning: false
+    property string promptText: "user@senticli:~$"
     signal submitted(string text)
     signal micToggled()
     signal cancelRequested()
 
-    color: Colors.panelElevated
+    color: "#0E1419"
     border.width: 1
-    border.color: Colors.border
-    radius: 10
-    implicitHeight: 54
+    border.color: "#2A373E"
+    radius: 6
+    implicitHeight: 48
 
     function submitText() {
         const value = input.text.trim()
@@ -30,18 +31,29 @@ Rectangle {
         anchors.margins: 8
         spacing: 8
 
+        Label {
+            text: root.promptText
+            color: Colors.success
+            font.family: Typography.monoFamily
+            font.pixelSize: Typography.bodySize
+        }
+
         TextField {
             id: input
             Layout.fillWidth: true
-            placeholderText: "Ask, command, or use slash commands (/help)"
+            placeholderText: "type command or question..."
             font.family: Typography.monoFamily
             font.pixelSize: Typography.bodySize
             color: Colors.textPrimary
+            background: Rectangle {
+                color: "transparent"
+                border.width: 0
+            }
             onAccepted: root.submitText()
         }
 
         Button {
-            text: "Mic"
+            text: "mic"
             onClicked: root.micToggled()
             font.family: Typography.uiFamily
             font.pixelSize: Typography.smallSize
@@ -49,14 +61,14 @@ Rectangle {
 
         Button {
             visible: root.actionRunning
-            text: "Cancel"
+            text: "cancel"
             onClicked: root.cancelRequested()
             font.family: Typography.uiFamily
             font.pixelSize: Typography.smallSize
         }
 
         Button {
-            text: "Send"
+            text: "enter"
             onClicked: root.submitText()
             font.family: Typography.uiFamily
             font.pixelSize: Typography.smallSize

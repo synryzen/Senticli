@@ -12,6 +12,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Two-pane layout matching the product concept
 - Animated digital face with status-driven expressions
 - Terminal-style message stream with user/assistant/system bubbles
+- Terminal-native bottom pane with line-based output and CLI prompt styling
 - Mode strip (`Chat`, `Assist`, `Command`)
 - OpenAI-compatible model endpoint support (example: `192.168.1.220/v1/chat/completions`)
 - Cloudflare/custom endpoint friendly auth via optional bearer API key
