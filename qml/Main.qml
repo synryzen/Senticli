@@ -93,6 +93,10 @@ ApplicationWindow {
             smoothingProfile: backend.smoothingProfile
             smoothingProfiles: backend.smoothingProfiles
             tokenRate: backend.tokenRate
+            assistantName: backend.assistantName
+            wakeEnabled: backend.wakeEnabled
+            wakeResponses: backend.wakeResponses
+            conversationalMode: backend.conversationalMode
             personality: backend.personality
             personalities: backend.personalities
             gender: backend.gender
@@ -140,6 +144,18 @@ ApplicationWindow {
             }
             onTokenRateSelected: function(rate) {
                 backend.setTokenRate(rate)
+            }
+            onAssistantNameSubmitted: function(value) {
+                backend.setAssistantName(value)
+            }
+            onWakeEnabledToggled: function(enabled) {
+                backend.setWakeEnabled(enabled)
+            }
+            onWakeResponsesSubmitted: function(responses) {
+                backend.setWakeResponses(responses)
+            }
+            onConversationalModeToggled: function(enabled) {
+                backend.setConversationalMode(enabled)
             }
             onPersonalitySelected: function(value) {
                 backend.setPersonality(value)

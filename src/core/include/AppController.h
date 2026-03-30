@@ -34,6 +34,10 @@ class AppController : public QObject
     Q_PROPERTY(QString smoothingProfile READ smoothingProfile WRITE setSmoothingProfile NOTIFY smoothingProfileChanged)
     Q_PROPERTY(QStringList smoothingProfiles READ smoothingProfiles CONSTANT)
     Q_PROPERTY(int tokenRate READ tokenRate WRITE setTokenRate NOTIFY tokenRateChanged)
+    Q_PROPERTY(QString assistantName READ assistantName WRITE setAssistantName NOTIFY assistantNameChanged)
+    Q_PROPERTY(bool wakeEnabled READ wakeEnabled WRITE setWakeEnabled NOTIFY wakeEnabledChanged)
+    Q_PROPERTY(QStringList wakeResponses READ wakeResponses NOTIFY wakeResponsesChanged)
+    Q_PROPERTY(bool conversationalMode READ conversationalMode WRITE setConversationalMode NOTIFY conversationalModeChanged)
     Q_PROPERTY(QString personality READ personality WRITE setPersonality NOTIFY personalityChanged)
     Q_PROPERTY(QStringList personalities READ personalities CONSTANT)
     Q_PROPERTY(QString gender READ gender WRITE setGender NOTIFY genderChanged)
@@ -75,6 +79,10 @@ public:
     QString smoothingProfile() const;
     QStringList smoothingProfiles() const;
     int tokenRate() const;
+    QString assistantName() const;
+    bool wakeEnabled() const;
+    QStringList wakeResponses() const;
+    bool conversationalMode() const;
     QString personality() const;
     QStringList personalities() const;
     QString gender() const;
@@ -109,6 +117,10 @@ public:
     Q_INVOKABLE void setSelectedModel(const QString &model);
     Q_INVOKABLE void setSmoothingProfile(const QString &profile);
     Q_INVOKABLE void setTokenRate(int rate);
+    Q_INVOKABLE void setAssistantName(const QString &name);
+    Q_INVOKABLE void setWakeEnabled(bool enabled);
+    Q_INVOKABLE void setWakeResponses(const QStringList &responses);
+    Q_INVOKABLE void setConversationalMode(bool enabled);
     Q_INVOKABLE void setPersonality(const QString &personality);
     Q_INVOKABLE void setGender(const QString &gender);
     Q_INVOKABLE void setVoiceStyle(const QString &voiceStyle);
@@ -138,6 +150,10 @@ signals:
     void modelStatusChanged();
     void smoothingProfileChanged();
     void tokenRateChanged();
+    void assistantNameChanged();
+    void wakeEnabledChanged();
+    void wakeResponsesChanged();
+    void conversationalModeChanged();
     void personalityChanged();
     void genderChanged();
     void voiceStyleChanged();
@@ -197,6 +213,7 @@ private:
     QString normalizedModelsOverrideUrl(const QString &endpoint) const;
     QString modelsUrlFromEndpoint(const QString &endpoint) const;
     void applyAuthHeader(QNetworkRequest &request) const;
+    bool parseWakeInput(const QString &raw, QString *trimmedMessage, bool *wakeOnly) const;
     void loadProfile(const QString &profileName);
     void saveProfileToSettings(const QString &profileName) const;
     int chunkSizeForBacklog(int backlog) const;
@@ -219,6 +236,14 @@ private:
     QString m_modelStatus = "Prototype mode (local rules)";
     QString m_smoothingProfile = "Terminal";
     int m_tokenRate = 180;
+    QString m_assistantName = "Senticli";
+    bool m_wakeEnabled = true;
+    QStringList m_wakeResponses = {"How can I help you?",
+                                   "I am here. What do you need?",
+                                   "Ready when you are.",
+                                   "Yep, talk to me.",
+                                   "What would you like me to do?"};
+    bool m_conversationalMode = true;
     QString m_personality = "Helpful";
     QString m_gender = "Neutral";
     QString m_voiceStyle = "Default";

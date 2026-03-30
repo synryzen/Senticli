@@ -30,6 +30,10 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - model picker + refresh
   - manual model ID entry (type and set any model name)
   - speed mode + token-rate controls
+  - companion name setting
+  - wake phrase enable/disable
+  - editable wake responses
+  - conversational mode toggle
   - personality preset selector
   - voice gender + voice style selectors
   - voice and memory toggles
@@ -53,6 +57,9 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - `/cancel`
   - `/model <id>`
   - `/speed <Instant|Terminal|Balanced|Human|Cinematic>`
+  - `/name <assistant-name>`
+  - `/wake <on|off>`
+  - `/conversation <on|off>`
   - `/personality <Helpful|Professional|Witty|Teacher|Hacker|Calm>`
   - `/gender <Neutral|Male|Female>`
   - `/voice-style <Default|Soft|Bright|Narrator>`
@@ -143,6 +150,9 @@ You can do the same via commands:
 /models
 /model your-model-id
 /speed instant
+/name Nova
+/wake on
+/conversation on
 /personality teacher
 /gender female
 /voice-style narrator

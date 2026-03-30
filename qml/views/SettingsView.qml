@@ -18,6 +18,10 @@ Rectangle {
     property string smoothingProfile: "Balanced"
     property var smoothingProfiles: ["Instant", "Terminal", "Balanced", "Human", "Cinematic"]
     property int tokenRate: 100
+    property string assistantName: "Senticli"
+    property bool wakeEnabled: true
+    property var wakeResponses: ["How can I help you?"]
+    property bool conversationalMode: true
     property string personality: "Helpful"
     property var personalities: ["Helpful", "Professional", "Witty", "Teacher", "Hacker", "Calm"]
     property string gender: "Neutral"
@@ -43,6 +47,10 @@ Rectangle {
     signal modelSelected(string modelName)
     signal smoothingSelected(string profile)
     signal tokenRateSelected(int rate)
+    signal assistantNameSubmitted(string name)
+    signal wakeEnabledToggled(bool enabled)
+    signal wakeResponsesSubmitted(var responses)
+    signal conversationalModeToggled(bool enabled)
     signal personalitySelected(string personality)
     signal genderSelected(string gender)
     signal voiceStyleSelected(string voiceStyle)
@@ -270,6 +278,95 @@ Rectangle {
                                 onClicked: {
                                     apiKeyField.text = ""
                                     root.apiKeySubmitted("")
+                                }
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    color: Colors.panelElevated
+                    radius: 10
+                    border.width: 1
+                    border.color: Colors.border
+                    implicitHeight: identityBlock.implicitHeight + 16
+
+                    ColumnLayout {
+                        id: identityBlock
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 8
+
+                        Label {
+                            text: "Companion Identity"
+                            color: Colors.textSecondary
+                            font.family: Typography.uiFamily
+                            font.pixelSize: Typography.smallSize
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            TextField {
+                                id: assistantNameField
+                                Layout.preferredWidth: 220
+                                text: root.assistantName
+                                placeholderText: "Assistant name"
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                                onAccepted: root.assistantNameSubmitted(text)
+                            }
+
+                            Button {
+                                text: "Set Name"
+                                onClicked: root.assistantNameSubmitted(assistantNameField.text)
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            Switch {
+                                id: wakeEnabledSwitch
+                                text: "Wake Phrase"
+                                checked: root.wakeEnabled
+                                onToggled: root.wakeEnabledToggled(checked)
+                            }
+
+                            Switch {
+                                id: conversationalSwitch
+                                text: "Conversational Replies"
+                                checked: root.conversationalMode
+                                onToggled: root.conversationalModeToggled(checked)
+                            }
+                        }
+
+                        Label {
+                            text: "Wake responses (one line each)"
+                            color: Colors.textSecondary
+                            font.family: Typography.uiFamily
+                            font.pixelSize: Typography.smallSize
+                        }
+
+                        TextArea {
+                            id: wakeResponsesArea
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 96
+                            wrapMode: TextArea.Wrap
+                            font.family: Typography.monoFamily
+                            font.pixelSize: Typography.smallSize
+                            placeholderText: "How can I help you?\nReady when you are."
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Item { Layout.fillWidth: true }
+                            Button {
+                                text: "Save Wake Responses"
+                                onClicked: {
+                                    const lines = wakeResponsesArea.text.split("\n")
+                                    root.wakeResponsesSubmitted(lines)
                                 }
                                 font.family: Typography.uiFamily
                                 font.pixelSize: Typography.smallSize
@@ -725,6 +822,22 @@ Rectangle {
         tokenRateSlider.value = tokenRate
     }
 
+    onAssistantNameChanged: {
+        assistantNameField.text = assistantName
+    }
+
+    onWakeEnabledChanged: {
+        wakeEnabledSwitch.checked = wakeEnabled
+    }
+
+    onWakeResponsesChanged: {
+        wakeResponsesArea.text = wakeResponses.join("\n")
+    }
+
+    onConversationalModeChanged: {
+        conversationalSwitch.checked = conversationalMode
+    }
+
     onTtsEnabledChanged: {
         ttsSwitch.checked = ttsEnabled
     }
@@ -738,6 +851,10 @@ Rectangle {
         modelsEndpointField.text = modelsEndpoint
         apiKeyField.text = apiKey
         tokenRateSlider.value = tokenRate
+        assistantNameField.text = assistantName
+        wakeEnabledSwitch.checked = wakeEnabled
+        wakeResponsesArea.text = wakeResponses.join("\n")
+        conversationalSwitch.checked = conversationalMode
         ttsSwitch.checked = ttsEnabled
         memorySwitch.checked = memoryEnabled
 

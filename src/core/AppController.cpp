@@ -8,6 +8,7 @@
 #include <QJsonObject>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QStandardPaths>
@@ -164,6 +165,26 @@ int AppController::tokenRate() const
     return m_tokenRate;
 }
 
+QString AppController::assistantName() const
+{
+    return m_assistantName;
+}
+
+bool AppController::wakeEnabled() const
+{
+    return m_wakeEnabled;
+}
+
+QStringList AppController::wakeResponses() const
+{
+    return m_wakeResponses;
+}
+
+bool AppController::conversationalMode() const
+{
+    return m_conversationalMode;
+}
+
 QString AppController::personality() const
 {
     return m_personality;
@@ -279,21 +300,40 @@ void AppController::sendUserInput(const QString &text)
         emit micActiveChanged();
     }
 
+    QString routedText = trimmed;
+    bool wakeOnly = false;
+    if (parseWakeInput(trimmed, &routedText, &wakeOnly)) {
+        if (wakeOnly) {
+            m_messageModel.addMessage("user", trimmed, "user");
+            setFaceState("listening");
+            setStatusText("Listening...");
+            if (m_wakeResponses.isEmpty()) {
+                postAssistant("How can I help you?");
+            } else {
+                const int idx = QRandomGenerator::global()->bounded(m_wakeResponses.size());
+                postAssistant(m_wakeResponses.at(idx));
+            }
+            return;
+        }
+    } else {
+        routedText = trimmed;
+    }
+
     m_messageModel.addMessage("user", trimmed, "user");
     setFaceState("thinking");
     setStatusText("Thinking...");
 
-    if (trimmed.startsWith('/')) {
-        QTimer::singleShot(120, this, [this, trimmed]() { handleInput(trimmed); });
+    if (routedText.startsWith('/')) {
+        QTimer::singleShot(120, this, [this, routedText]() { handleInput(routedText); });
         return;
     }
 
     if (shouldUseRemoteModel()) {
-        requestRemoteCompletion(trimmed);
+        requestRemoteCompletion(routedText);
         return;
     }
 
-    QTimer::singleShot(120, this, [this, trimmed]() { handleInput(trimmed); });
+    QTimer::singleShot(120, this, [this, routedText]() { handleInput(routedText); });
 }
 
 void AppController::toggleMic()
@@ -554,6 +594,87 @@ void AppController::setTokenRate(int rate)
     emit tokenRateChanged();
     setModelStatus(QString("Token rate: %1%").arg(m_tokenRate));
     appendAudit(QString("Token rate set: %1").arg(m_tokenRate));
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
+void AppController::setAssistantName(const QString &name)
+{
+    const QString trimmed = name.trimmed();
+    if (trimmed.isEmpty() || m_assistantName == trimmed) {
+        return;
+    }
+
+    m_assistantName = trimmed;
+    emit assistantNameChanged();
+    setModelStatus(QString("Assistant name: %1").arg(m_assistantName));
+    appendAudit("Assistant renamed: " + m_assistantName);
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
+void AppController::setWakeEnabled(bool enabled)
+{
+    if (m_wakeEnabled == enabled) {
+        return;
+    }
+
+    m_wakeEnabled = enabled;
+    emit wakeEnabledChanged();
+    setModelStatus(m_wakeEnabled ? "Wake phrase enabled" : "Wake phrase disabled");
+    appendAudit(QString("Wake phrase %1").arg(m_wakeEnabled ? "enabled" : "disabled"));
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
+void AppController::setWakeResponses(const QStringList &responses)
+{
+    QStringList cleaned;
+    for (const QString &item : responses) {
+        const QString trimmed = item.trimmed();
+        if (!trimmed.isEmpty() && !cleaned.contains(trimmed)) {
+            cleaned.append(trimmed);
+        }
+    }
+
+    if (cleaned.isEmpty()) {
+        cleaned = {"How can I help you?",
+                   "I am here. What do you need?",
+                   "Ready when you are.",
+                   "Yep, talk to me.",
+                   "What would you like me to do?"};
+    }
+
+    if (m_wakeResponses == cleaned) {
+        return;
+    }
+
+    m_wakeResponses = cleaned;
+    emit wakeResponsesChanged();
+    setModelStatus(QString("Wake responses updated (%1)").arg(m_wakeResponses.size()));
+    appendAudit("Wake responses updated");
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
+void AppController::setConversationalMode(bool enabled)
+{
+    if (m_conversationalMode == enabled) {
+        return;
+    }
+
+    m_conversationalMode = enabled;
+    emit conversationalModeChanged();
+    setModelStatus(m_conversationalMode ? "Conversational mode enabled" : "Conversational mode disabled");
+    appendAudit(QString("Conversational mode %1").arg(m_conversationalMode ? "enabled" : "disabled"));
     if (!m_activeProfile.isEmpty()) {
         saveProfileToSettings(m_activeProfile);
     }
@@ -1286,6 +1407,20 @@ void AppController::loadSettings()
     }
 
     m_tokenRate = qBound(20, settings.value("ai/tokenRate", m_tokenRate).toInt(), 600);
+    m_assistantName = settings.value("ai/assistantName", m_assistantName).toString().trimmed();
+    if (m_assistantName.isEmpty()) {
+        m_assistantName = "Senticli";
+    }
+    m_wakeEnabled = settings.value("ai/wakeEnabled", m_wakeEnabled).toBool();
+    m_wakeResponses = settings.value("ai/wakeResponses", m_wakeResponses).toStringList();
+    if (m_wakeResponses.isEmpty()) {
+        m_wakeResponses = {"How can I help you?",
+                           "I am here. What do you need?",
+                           "Ready when you are.",
+                           "Yep, talk to me.",
+                           "What would you like me to do?"};
+    }
+    m_conversationalMode = settings.value("ai/conversationalMode", m_conversationalMode).toBool();
     m_personality = settings.value("ai/personality", m_personality).toString();
     if (!personalities().contains(m_personality)) {
         m_personality = "Helpful";
@@ -1330,6 +1465,10 @@ void AppController::saveSettings() const
     settings.setValue("ai/availableModels", m_availableModels);
     settings.setValue("ai/smoothingProfile", m_smoothingProfile);
     settings.setValue("ai/tokenRate", m_tokenRate);
+    settings.setValue("ai/assistantName", m_assistantName);
+    settings.setValue("ai/wakeEnabled", m_wakeEnabled);
+    settings.setValue("ai/wakeResponses", m_wakeResponses);
+    settings.setValue("ai/conversationalMode", m_conversationalMode);
     settings.setValue("ai/personality", m_personality);
     settings.setValue("ai/gender", m_gender);
     settings.setValue("voice/ttsEnabled", m_ttsEnabled);
@@ -1486,6 +1625,9 @@ void AppController::handleInput(const QString &text)
             "/models\n"
             "/model <id>\n"
             "/speed <Instant|Terminal|Balanced|Human|Cinematic>\n"
+            "/name <assistant-name>\n"
+            "/wake on|off\n"
+            "/conversation on|off\n"
             "/personality <Helpful|Professional|Witty|Teacher|Hacker|Calm>\n"
             "/gender <Neutral|Male|Female>\n"
             "/voice-style <Default|Soft|Bright|Narrator>\n"
@@ -1611,6 +1753,39 @@ void AppController::handleInput(const QString &text)
 
     if (lowered.startsWith("/model ")) {
         setSelectedModel(text.mid(7).trimmed());
+        return;
+    }
+
+    if (lowered.startsWith("/name ")) {
+        setAssistantName(text.mid(6).trimmed());
+        return;
+    }
+
+    if (lowered.startsWith("/wake ")) {
+        const QString value = lowered.mid(6).trimmed();
+        if (value == "on") {
+            setWakeEnabled(true);
+            return;
+        }
+        if (value == "off") {
+            setWakeEnabled(false);
+            return;
+        }
+        postAssistant("Usage: /wake on|off", "warning");
+        return;
+    }
+
+    if (lowered.startsWith("/conversation ")) {
+        const QString value = lowered.mid(14).trimmed();
+        if (value == "on") {
+            setConversationalMode(true);
+            return;
+        }
+        if (value == "off") {
+            setConversationalMode(false);
+            return;
+        }
+        postAssistant("Usage: /conversation on|off", "warning");
         return;
     }
 
@@ -1995,12 +2170,16 @@ QString AppController::systemPersonaPrompt() const
         tone = "calm, reassuring, and concise";
     }
 
+    const QString conversationInstruction = m_conversationalMode
+        ? "Use natural dialogue, ask brief clarifying follow-ups when useful, and keep interaction human-like without fluff."
+        : "Keep interaction efficient and command-focused.";
+
     return QString(
-               "You are Senticli, a local Linux terminal companion. "
-               "Keep replies %1. "
-               "Current presentation preferences: personality=%2, voice-gender=%3, voice-style=%4. "
+               "You are %1, a local Linux terminal companion. "
+               "Keep replies %2. %3 "
+               "Current presentation preferences: personality=%4, voice-gender=%5, voice-style=%6. "
                "When suggesting actions, be explicit and safe.")
-        .arg(tone, m_personality, m_gender, m_voiceStyle);
+        .arg(m_assistantName, tone, conversationInstruction, m_personality, m_gender, m_voiceStyle);
 }
 
 void AppController::postAssistant(const QString &text, const QString &kind)
@@ -2151,6 +2330,58 @@ void AppController::applyAuthHeader(QNetworkRequest &request) const
     request.setRawHeader("Authorization", bearer);
 }
 
+bool AppController::parseWakeInput(const QString &raw, QString *trimmedMessage, bool *wakeOnly) const
+{
+    if (trimmedMessage) {
+        *trimmedMessage = raw.trimmed();
+    }
+    if (wakeOnly) {
+        *wakeOnly = false;
+    }
+
+    if (!m_wakeEnabled) {
+        return false;
+    }
+
+    const QString name = m_assistantName.trimmed();
+    if (name.isEmpty()) {
+        return false;
+    }
+
+    const QString input = raw.trimmed();
+    if (input.isEmpty()) {
+        return false;
+    }
+
+    const QString lowered = input.toLower();
+    const QString escapedName = QRegularExpression::escape(name.toLower());
+
+    QRegularExpression prefixedPattern(
+        QString("^\\s*(hey|hi|hello)\\s+%1([\\s,!.?:;-]*)").arg(escapedName),
+        QRegularExpression::CaseInsensitiveOption);
+    QRegularExpression directPattern(
+        QString("^\\s*%1([\\s,!.?:;-]*)").arg(escapedName),
+        QRegularExpression::CaseInsensitiveOption);
+
+    QRegularExpressionMatch match = prefixedPattern.match(lowered);
+    if (!match.hasMatch()) {
+        match = directPattern.match(lowered);
+    }
+    if (!match.hasMatch()) {
+        return false;
+    }
+
+    const int consumed = match.capturedLength(0);
+    const QString remainder = input.mid(consumed).trimmed();
+    if (trimmedMessage) {
+        *trimmedMessage = remainder;
+    }
+    if (wakeOnly) {
+        *wakeOnly = remainder.isEmpty();
+    }
+    return true;
+}
+
 void AppController::loadProfile(const QString &profileName)
 {
     const QString trimmed = profileName.trimmed();
@@ -2170,6 +2401,10 @@ void AppController::loadProfile(const QString &profileName)
     const QString profileModel = settings.value(base + "selectedModel", m_selectedModel).toString().trimmed();
     const QString profileSmoothing = settings.value(base + "smoothingProfile", m_smoothingProfile).toString();
     const int profileTokenRate = qBound(20, settings.value(base + "tokenRate", m_tokenRate).toInt(), 600);
+    const QString profileAssistantName = settings.value(base + "assistantName", m_assistantName).toString().trimmed();
+    const bool profileWakeEnabled = settings.value(base + "wakeEnabled", m_wakeEnabled).toBool();
+    QStringList profileWakeResponses = settings.value(base + "wakeResponses", m_wakeResponses).toStringList();
+    const bool profileConversationalMode = settings.value(base + "conversationalMode", m_conversationalMode).toBool();
     const QString profilePersonality = settings.value(base + "personality", m_personality).toString();
     const QString profileGender = settings.value(base + "gender", m_gender).toString();
     const QString profileVoiceStyle = settings.value(base + "voiceStyle", m_voiceStyle).toString();
@@ -2216,6 +2451,29 @@ void AppController::loadProfile(const QString &profileName)
         emit tokenRateChanged();
     }
 
+    if (!profileAssistantName.isEmpty() && m_assistantName != profileAssistantName) {
+        m_assistantName = profileAssistantName;
+        emit assistantNameChanged();
+    }
+
+    if (m_wakeEnabled != profileWakeEnabled) {
+        m_wakeEnabled = profileWakeEnabled;
+        emit wakeEnabledChanged();
+    }
+
+    if (profileWakeResponses.isEmpty()) {
+        profileWakeResponses = m_wakeResponses;
+    }
+    if (m_wakeResponses != profileWakeResponses) {
+        m_wakeResponses = profileWakeResponses;
+        emit wakeResponsesChanged();
+    }
+
+    if (m_conversationalMode != profileConversationalMode) {
+        m_conversationalMode = profileConversationalMode;
+        emit conversationalModeChanged();
+    }
+
     if (personalities().contains(profilePersonality) && m_personality != profilePersonality) {
         m_personality = profilePersonality;
         emit personalityChanged();
@@ -2248,6 +2506,10 @@ void AppController::saveProfileToSettings(const QString &profileName) const
     settings.setValue(base + "selectedModel", m_selectedModel);
     settings.setValue(base + "smoothingProfile", m_smoothingProfile);
     settings.setValue(base + "tokenRate", m_tokenRate);
+    settings.setValue(base + "assistantName", m_assistantName);
+    settings.setValue(base + "wakeEnabled", m_wakeEnabled);
+    settings.setValue(base + "wakeResponses", m_wakeResponses);
+    settings.setValue(base + "conversationalMode", m_conversationalMode);
     settings.setValue(base + "personality", m_personality);
     settings.setValue(base + "gender", m_gender);
     settings.setValue(base + "voiceStyle", m_voiceStyle);
