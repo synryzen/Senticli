@@ -14,7 +14,7 @@ Item {
     property bool isWarning: root.faceState === "warning"
     property bool isThinking: root.faceState === "thinking"
     property bool isListening: root.faceState === "listening" || root.micActive
-    property bool isSpeaking: root.faceState === "speaking" || root.speakingActive
+    property bool isSpeaking: root.speakingActive
     property bool isHappy: root.faceState === "happy"
     property bool isConfused: root.faceState === "confused"
     property color expressionAccent: {

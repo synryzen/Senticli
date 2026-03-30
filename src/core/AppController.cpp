@@ -51,8 +51,17 @@ AppController::AppController(QObject *parent)
         this,
         &AppController::handleShellFinished);
 
+    connect(&m_ttsProcess, &QProcess::started, this, [this]() {
+        appendAudit("TTS started");
+        setSpeakingActive(true);
+        setFaceState("speaking");
+        setStatusText("Speaking...");
+    });
+
     connect(&m_ttsProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, [this](int, QProcess::ExitStatus) {
         appendAudit("TTS finished");
+        setSpeakingActive(false);
+        QTimer::singleShot(120, this, [this]() { finalizeAssistantState(); });
     });
 
     loadSettings();
@@ -1088,6 +1097,15 @@ void AppController::setCommandRunning(bool running)
     }
 }
 
+void AppController::setSpeakingActive(bool active)
+{
+    if (m_speakingActive == active) {
+        return;
+    }
+    m_speakingActive = active;
+    emit speakingActiveChanged();
+}
+
 void AppController::updateStreamingMessageDisplay(bool showCursor)
 {
     if (m_streamingMessageRow < 0) {
@@ -1155,9 +1173,13 @@ void AppController::maybeFinalizeSuccessfulStream()
     appendAudit("Completion received");
     clearStreamingState();
     if (m_ttsEnabled) {
-        speakText(finalText);
+        const bool started = speakText(finalText);
+        if (!started) {
+            QTimer::singleShot(120, this, [this]() { finalizeAssistantState(); });
+        }
+        return;
     }
-    QTimer::singleShot(200, this, [this]() { finalizeAssistantState(); });
+    QTimer::singleShot(180, this, [this]() { finalizeAssistantState(); });
 }
 
 void AppController::clearStreamingState()
@@ -1259,15 +1281,15 @@ void AppController::handleShellFinished(int exitCode, QProcess::ExitStatus exitS
     QTimer::singleShot(350, this, [this]() { finalizeAssistantState(); });
 }
 
-void AppController::speakText(const QString &text)
+bool AppController::speakText(const QString &text)
 {
     if (!m_ttsEnabled) {
-        return;
+        return false;
     }
 
     QString toSpeak = text.trimmed();
     if (toSpeak.isEmpty()) {
-        return;
+        return false;
     }
 
     if (toSpeak.size() > 700) {
@@ -1280,7 +1302,7 @@ void AppController::speakText(const QString &text)
 
     if (m_ttsBinary.isEmpty()) {
         appendAudit("No TTS backend found (needs spd-say or espeak)");
-        return;
+        return false;
     }
 
     stopSpeaking();
@@ -1335,7 +1357,7 @@ void AppController::speakText(const QString &text)
     }
 
     m_ttsProcess.start(m_ttsBinary, args);
-    appendAudit("TTS started");
+    return true;
 }
 
 void AppController::stopSpeaking()
@@ -1346,6 +1368,7 @@ void AppController::stopSpeaking()
     m_ttsProcess.kill();
     m_ttsProcess.waitForFinished(300);
     appendAudit("TTS stopped");
+    setSpeakingActive(false);
 }
 
 QString AppController::currentProjectKey() const
@@ -1908,10 +1931,7 @@ void AppController::handleInput(const QString &text)
 
 void AppController::finalizeAssistantState()
 {
-    if (m_speakingActive) {
-        m_speakingActive = false;
-        emit speakingActiveChanged();
-    }
+    setSpeakingActive(false);
 
     if (m_pendingApproval) {
         setFaceState("warning");
@@ -1978,10 +1998,9 @@ void AppController::requestRemoteCompletion(const QString &text)
     setStreamingActive(true);
     updateStreamingMessageDisplay(true);
 
-    m_speakingActive = true;
-    emit speakingActiveChanged();
-    setFaceState("speaking");
-    setStatusText("Streaming response...");
+    setSpeakingActive(false);
+    setFaceState("thinking");
+    setStatusText("Waiting for first token...");
     setModelStatus(QString("Querying %1").arg(m_selectedModel));
     appendAudit("Completion request started");
 
@@ -2037,6 +2056,14 @@ void AppController::requestRemoteCompletion(const QString &text)
             }
 
             m_streamSawToken = true;
+            if (!m_ttsEnabled) {
+                setSpeakingActive(true);
+                setFaceState("speaking");
+                setStatusText("Streaming response...");
+            } else {
+                setFaceState("thinking");
+                setStatusText("Receiving response...");
+            }
             queueStreamText(token);
         }
     });
@@ -2074,10 +2101,7 @@ void AppController::requestRemoteCompletion(const QString &text)
             clearStreamingState();
             setFaceState("warning");
             setStatusText("Model request failed");
-            if (m_speakingActive) {
-                m_speakingActive = false;
-                emit speakingActiveChanged();
-            }
+            setSpeakingActive(false);
             reply->deleteLater();
             return;
         }
@@ -2106,10 +2130,7 @@ void AppController::requestRemoteCompletion(const QString &text)
             clearStreamingState();
             setFaceState("warning");
             setStatusText("No response text");
-            if (m_speakingActive) {
-                m_speakingActive = false;
-                emit speakingActiveChanged();
-            }
+            setSpeakingActive(false);
             reply->deleteLater();
             return;
         }
@@ -2187,21 +2208,24 @@ void AppController::postAssistant(const QString &text, const QString &kind)
     m_messageModel.addMessage("assistant", text, kind);
 
     if (kind == "warning") {
+        setSpeakingActive(false);
         setFaceState("warning");
         setStatusText("Attention required");
         return;
     }
 
-    m_speakingActive = true;
-    emit speakingActiveChanged();
-    setFaceState("speaking");
-    setStatusText("Speaking...");
-
     if (m_ttsEnabled) {
-        speakText(text);
+        const bool started = speakText(text);
+        if (started) {
+            return;
+        }
     }
 
-    QTimer::singleShot(820, this, [this]() { finalizeAssistantState(); });
+    setSpeakingActive(true);
+    setFaceState("speaking");
+    setStatusText("Responding...");
+    const int ms = qBound(220, text.size() * 16, 1500);
+    QTimer::singleShot(ms, this, [this]() { finalizeAssistantState(); });
 }
 
 void AppController::requestApproval(const QString &prompt, const QString &actionKind, const QString &payload)

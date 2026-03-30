@@ -186,7 +186,8 @@ private:
     void cancelShellCommand();
     void handleShellOutput();
     void handleShellFinished(int exitCode, QProcess::ExitStatus exitStatus);
-    void speakText(const QString &text);
+    bool speakText(const QString &text);
+    void setSpeakingActive(bool active);
     void stopSpeaking();
     QString currentProjectKey() const;
     QString appDataDir() const;
