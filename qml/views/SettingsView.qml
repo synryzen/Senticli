@@ -30,6 +30,8 @@ Rectangle {
     property var duplexSmoothnessOptions: ["Responsive", "Balanced", "Natural", "Studio"]
     property string personality: "Helpful"
     property var personalities: ["Helpful", "Professional", "Witty", "Teacher", "Hacker", "Calm"]
+    property string faceStyle: "Loona"
+    property var faceStyles: ["Loona", "Terminal", "Orb"]
     property string gender: "Neutral"
     property var genders: ["Neutral", "Male", "Female"]
     property string voiceStyle: "Default"
@@ -63,6 +65,7 @@ Rectangle {
     signal vadSensitivitySelected(int value)
     signal duplexSmoothnessSelected(string value)
     signal personalitySelected(string personality)
+    signal faceStyleSelected(string faceStyle)
     signal genderSelected(string gender)
     signal voiceStyleSelected(string voiceStyle)
     signal ttsToggledRequested(bool enabled)
@@ -678,6 +681,22 @@ Rectangle {
                             }
 
                             Label {
+                                text: "Face Style"
+                                color: Colors.textSecondary
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                            }
+
+                            ComboBox {
+                                id: faceStyleCombo
+                                Layout.preferredWidth: 150
+                                model: root.faceStyles
+                                font.family: Typography.uiFamily
+                                font.pixelSize: Typography.smallSize
+                                onActivated: root.faceStyleSelected(currentText)
+                            }
+
+                            Label {
                                 text: "Voice Gender"
                                 color: Colors.textSecondary
                                 font.family: Typography.uiFamily
@@ -955,6 +974,13 @@ Rectangle {
         }
     }
 
+    onFaceStyleChanged: {
+        const idx = faceStyleCombo.find(faceStyle)
+        if (idx >= 0) {
+            faceStyleCombo.currentIndex = idx
+        }
+    }
+
     onGenderChanged: {
         const idx = genderCombo.find(gender)
         if (idx >= 0) {
@@ -1059,6 +1085,11 @@ Rectangle {
         idx = personalityCombo.find(personality)
         if (idx >= 0) {
             personalityCombo.currentIndex = idx
+        }
+
+        idx = faceStyleCombo.find(faceStyle)
+        if (idx >= 0) {
+            faceStyleCombo.currentIndex = idx
         }
 
         idx = genderCombo.find(gender)

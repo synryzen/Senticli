@@ -4,7 +4,9 @@ import Senticli
 Item {
     id: root
     property string stateName: "idle"
+    property string styleName: "Loona"
     property bool speaking: false
+    property int beatMs: 180
     property int visemeFrame: 0
 
     width: 190
@@ -12,17 +14,34 @@ Item {
 
     readonly property bool styleHappy: stateName === "happy"
     readonly property bool styleWarning: stateName === "warning"
+    readonly property bool styleAngry: stateName === "angry"
+    readonly property bool styleSad: stateName === "sad"
+    readonly property bool styleSleeping: stateName === "sleeping"
     readonly property bool styleConfused: stateName === "confused"
     readonly property bool styleThinking: stateName === "thinking"
     readonly property bool styleListening: stateName === "listening"
 
-    property real speakingOpen: [12, 28, 18, 34, 16, 24, 20, 30][visemeFrame % 8]
-    property real speakingWidth: [118, 142, 108, 150, 120, 136, 124, 146][visemeFrame % 8]
-    property real speakingTilt: [-2, 2, -1, 1, 0, -1, 2, -2][visemeFrame % 8]
+    readonly property var openFrames: root.styleName === "Loona"
+                                      ? [10, 16, 24, 14, 22, 12, 20, 15]
+                                      : (root.styleName === "Orb"
+                                         ? [8, 18, 12, 20, 10, 16, 12, 22]
+                                         : [12, 28, 18, 34, 16, 24, 20, 30])
+    readonly property var widthFrames: root.styleName === "Loona"
+                                       ? [108, 122, 138, 116, 132, 114, 128, 120]
+                                       : (root.styleName === "Orb"
+                                          ? [100, 120, 106, 126, 108, 124, 110, 128]
+                                          : [118, 142, 108, 150, 120, 136, 124, 146])
+    readonly property var tiltFrames: root.styleName === "Terminal"
+                                      ? [-2, 2, -1, 1, 0, -1, 2, -2]
+                                      : [-1, 1, 0, 1, 0, -1, 1, -1]
+
+    property real speakingOpen: openFrames[visemeFrame % 8]
+    property real speakingWidth: widthFrames[visemeFrame % 8]
+    property real speakingTilt: tiltFrames[visemeFrame % 8]
 
     Timer {
         id: visemeTimer
-        interval: 80
+        interval: root.beatMs
         running: root.speaking
         repeat: true
         onTriggered: root.visemeFrame = (root.visemeFrame + 1) % 16
@@ -44,7 +63,7 @@ Item {
             height: 12
             radius: 6
             color: root.styleWarning ? Colors.warning : Colors.accent
-            visible: !root.styleHappy && !root.styleListening && !root.styleConfused
+            visible: !root.styleHappy && !root.styleListening && !root.styleConfused && !root.styleSad && !root.styleSleeping && !root.styleAngry
             opacity: root.styleThinking ? 0.75 : 0.95
         }
 
@@ -72,7 +91,7 @@ Item {
             width: 148
             height: 46
             clip: true
-            visible: root.styleWarning
+            visible: root.styleWarning || root.styleAngry
 
             Rectangle {
                 width: 148
@@ -82,8 +101,37 @@ Item {
                 y: -2
                 color: "transparent"
                 border.width: 4
-                border.color: Colors.warning
+                border.color: root.styleAngry ? "#FF6A4C" : Colors.warning
             }
+        }
+
+        Item {
+            anchors.centerIn: parent
+            width: 160
+            height: 52
+            clip: true
+            visible: root.styleSad
+
+            Rectangle {
+                width: 160
+                height: 160
+                radius: 80
+                x: 0
+                y: 96
+                color: "transparent"
+                border.width: 4
+                border.color: "#7AA7FF"
+            }
+        }
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: root.styleSleeping ? 62 : 0
+            height: root.styleSleeping ? 8 : 0
+            radius: 4
+            color: "#89A0B8"
+            visible: root.styleSleeping
+            opacity: 0.85
         }
 
         Rectangle {

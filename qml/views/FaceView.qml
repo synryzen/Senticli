@@ -8,6 +8,8 @@ Item {
     property string statusText: "Ready"
     property bool micActive: false
     property real voiceInputLevel: 0.0
+    property string faceStyle: "Loona"
+    property int mouthBeatMs: 180
     property bool speakingActive: false
 
     property real blinkFactor: 1.0
@@ -15,31 +17,54 @@ Item {
     property real moodSwing: 0.0
     property real idleBob: 0.0
     property real talkBeat: 0.0
-    property bool isWarning: root.faceState === "warning"
-    property bool isThinking: root.faceState === "thinking"
-    property bool isListening: root.faceState === "listening" || root.micActive
+    property bool sleepMode: false
+    readonly property bool styleLoona: root.faceStyle === "Loona"
+    readonly property bool styleTerminal: root.faceStyle === "Terminal"
+    readonly property bool styleOrb: root.faceStyle === "Orb"
+    readonly property string effectiveState: root.sleepMode ? "sleeping" : root.faceState
+    property bool isWarning: root.effectiveState === "warning"
+    property bool isThinking: root.effectiveState === "thinking"
+    property bool isListening: root.effectiveState === "listening" || root.micActive
     property bool isSpeaking: root.speakingActive
-    property bool isHappy: root.faceState === "happy"
-    property bool isConfused: root.faceState === "confused"
+    property bool isHappy: root.effectiveState === "happy"
+    property bool isConfused: root.effectiveState === "confused"
+    property bool isSad: root.effectiveState === "sad"
+    property bool isAngry: root.effectiveState === "angry"
+    property bool isSleeping: root.effectiveState === "sleeping"
     property color expressionAccent: {
-        if (root.isWarning) return Colors.warning
+        if (root.isAngry || root.isWarning) return Colors.warning
+        if (root.isSad) return "#7AA7FF"
         if (root.isSpeaking) return Colors.info
         if (root.isHappy) return Colors.success
+        if (root.styleLoona) return "#8AD8FF"
+        if (root.styleOrb) return "#7EE7D8"
         return Colors.accent
+    }
+
+    function refreshSleepTimer() {
+        if (!root.micActive && !root.speakingActive
+                && (root.faceState === "idle" || root.faceState === "happy" || root.faceState === "sad")) {
+            sleepTimer.restart()
+        } else {
+            sleepTimer.stop()
+            if (root.sleepMode) {
+                root.sleepMode = false
+            }
+        }
     }
 
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#151A21" }
-            GradientStop { position: 1.0; color: Colors.windowBg }
+            GradientStop { position: 0.0; color: root.styleLoona ? "#101724" : "#151A21" }
+            GradientStop { position: 1.0; color: root.styleLoona ? "#0B111A" : Colors.windowBg }
         }
     }
 
     Rectangle {
         id: glow
-        width: 380
-        height: 380
+        width: root.styleOrb ? 430 : 380
+        height: root.styleOrb ? 430 : 380
         radius: width / 2
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.verticalCenter: parent.verticalCenter
@@ -58,17 +83,17 @@ Item {
 
     Rectangle {
         id: facePlate
-        width: 520
-        height: 250
-        radius: 28
+        width: root.styleLoona ? 470 : (root.styleOrb ? 360 : 520)
+        height: root.styleLoona ? 270 : (root.styleOrb ? 360 : 250)
+        radius: root.styleOrb ? 180 : (root.styleLoona ? 46 : 28)
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.verticalCenter: parent.verticalCenter
-        color: Colors.panelBg
+        color: root.styleLoona ? "#0A121A" : Colors.panelBg
         border.width: 1
         border.color: root.expressionAccent
-        y: (root.isSpeaking ? (-6 + root.talkBeat) : (root.isListening ? -2 : 0)) + root.idleBob
+        y: (root.isSpeaking ? (-6 + root.talkBeat) : (root.isListening ? -2 : 0)) + root.idleBob + (root.isSleeping ? 4 : 0)
         scale: root.isSpeaking ? (1.014 + root.talkBeat * 0.004) : 1.0
-        rotation: root.isConfused ? -1.8 : (root.isHappy ? 0.8 : 0)
+        rotation: root.isConfused ? -1.8 : (root.isHappy ? 0.8 : (root.isAngry ? -0.5 : 0))
 
         Behavior on y { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
@@ -80,7 +105,7 @@ Item {
             spacing: 26
 
             Row {
-                spacing: 106
+                spacing: root.styleLoona ? 86 : 106
                 anchors.horizontalCenter: parent.horizontalCenter
 
                 Rectangle {
@@ -89,8 +114,8 @@ Item {
                     radius: 4
                     color: root.expressionAccent
                     opacity: 0.9
-                    rotation: root.isConfused ? -22 : (root.isWarning ? -14 : (root.isHappy ? -16 : (-3 + root.moodSwing * 6 + root.talkBeat * 2.5)))
-                    y: root.isThinking ? -4 : 0
+                    rotation: root.isConfused ? -22 : ((root.isWarning || root.isAngry) ? -24 : (root.isHappy ? -16 : (root.isSad ? -4 : (-3 + root.moodSwing * 6 + root.talkBeat * 2.5))))
+                    y: root.isThinking ? -4 : (root.isSad ? 3 : 0)
                     Behavior on rotation { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
                 }
 
@@ -100,42 +125,46 @@ Item {
                     radius: 4
                     color: root.expressionAccent
                     opacity: 0.9
-                    rotation: root.isConfused ? 10 : (root.isWarning ? 18 : (root.isHappy ? 16 : (3 - root.moodSwing * 6 - root.talkBeat * 2.5)))
-                    y: root.isThinking ? -6 : 0
+                    rotation: root.isConfused ? 10 : ((root.isWarning || root.isAngry) ? 24 : (root.isHappy ? 16 : (root.isSad ? 4 : (3 - root.moodSwing * 6 - root.talkBeat * 2.5))))
+                    y: root.isThinking ? -6 : (root.isSad ? 3 : 0)
                     Behavior on rotation { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
                 }
             }
 
             Row {
-                spacing: 72
+                spacing: root.styleLoona ? 52 : 72
                 anchors.horizontalCenter: parent.horizontalCenter
 
                 Eye {
-                    openness: (root.isWarning ? 0.48 : (root.isThinking ? 0.64 : (root.isHappy ? 0.9 : 0.94))) * root.blinkFactor
+                    openness: (root.isSleeping ? 0.18 : ((root.isWarning || root.isAngry) ? 0.42 : (root.isThinking ? 0.64 : (root.isHappy ? 0.9 : (root.isSad ? 0.72 : 0.94))))) * root.blinkFactor
                     focusX: root.isThinking ? -0.34 : (root.isListening ? 0.22 : (root.driftX + root.moodSwing * 0.14))
-                    focusY: root.isThinking ? -0.2 : (root.isSpeaking ? (0.07 + root.talkBeat * 0.11) : (root.isHappy ? -0.04 : 0.0))
-                    squint: root.isWarning ? 0.58 : (root.isSpeaking ? 0.2 : (root.isHappy ? 0.08 : 0.0))
+                    focusY: root.isThinking ? -0.2 : (root.isSpeaking ? (0.07 + root.talkBeat * 0.11) : (root.isHappy ? -0.04 : (root.isSad ? 0.04 : 0.0)))
+                    squint: (root.isWarning || root.isAngry) ? 0.62 : (root.isSpeaking ? 0.2 : (root.isHappy ? 0.08 : 0.0))
                     pupilScale: root.isWarning ? 0.86 : (root.isSpeaking ? 1.08 : 1.0)
-                    glintOpacity: root.isWarning ? 0.35 : (root.isHappy ? 0.85 : 0.62)
-                    warning: root.isWarning
+                    glintOpacity: (root.isWarning || root.isAngry) ? 0.35 : (root.isHappy ? 0.85 : (root.isSleeping ? 0.25 : 0.62))
+                    warning: root.isWarning || root.isAngry
                     accentColor: root.expressionAccent
+                    scale: root.styleLoona ? 1.18 : (root.styleOrb ? 1.06 : 1.0)
                 }
 
                 Eye {
-                    openness: (root.isWarning ? 0.48 : (root.isThinking ? 0.64 : (root.isHappy ? 0.9 : 0.94))) * root.blinkFactor
+                    openness: (root.isSleeping ? 0.18 : ((root.isWarning || root.isAngry) ? 0.42 : (root.isThinking ? 0.64 : (root.isHappy ? 0.9 : (root.isSad ? 0.72 : 0.94))))) * root.blinkFactor
                     focusX: root.isThinking ? 0.34 : (root.isListening ? -0.22 : (-root.driftX + root.moodSwing * 0.14))
-                    focusY: root.isThinking ? -0.2 : (root.isSpeaking ? (0.07 + root.talkBeat * 0.11) : (root.isHappy ? -0.04 : 0.0))
-                    squint: root.isWarning ? 0.58 : (root.isSpeaking ? 0.2 : (root.isHappy ? 0.08 : 0.0))
+                    focusY: root.isThinking ? -0.2 : (root.isSpeaking ? (0.07 + root.talkBeat * 0.11) : (root.isHappy ? -0.04 : (root.isSad ? 0.04 : 0.0)))
+                    squint: (root.isWarning || root.isAngry) ? 0.62 : (root.isSpeaking ? 0.2 : (root.isHappy ? 0.08 : 0.0))
                     pupilScale: root.isWarning ? 0.86 : (root.isSpeaking ? 1.08 : 1.0)
-                    glintOpacity: root.isWarning ? 0.35 : (root.isHappy ? 0.85 : 0.62)
-                    warning: root.isWarning
+                    glintOpacity: (root.isWarning || root.isAngry) ? 0.35 : (root.isHappy ? 0.85 : (root.isSleeping ? 0.25 : 0.62))
+                    warning: root.isWarning || root.isAngry
                     accentColor: root.expressionAccent
+                    scale: root.styleLoona ? 1.18 : (root.styleOrb ? 1.06 : 1.0)
                 }
             }
 
             Mouth {
                 anchors.horizontalCenter: parent.horizontalCenter
-                stateName: root.faceState
+                stateName: root.effectiveState
+                styleName: root.faceStyle
+                beatMs: root.mouthBeatMs
                 speaking: root.isSpeaking
             }
         }
@@ -145,7 +174,7 @@ Item {
             height: 12
             radius: 8
             color: root.isHappy ? "#6AE6B1" : (root.isWarning ? "#F1A08D" : "#FFFFFF")
-            opacity: root.isHappy ? 0.22 : (root.isWarning ? 0.18 : 0.0)
+        opacity: root.isHappy ? 0.22 : (root.isWarning ? 0.18 : 0.0)
             anchors.left: parent.left
             anchors.leftMargin: 112
             anchors.bottom: parent.bottom
@@ -157,7 +186,7 @@ Item {
             height: 12
             radius: 8
             color: root.isHappy ? "#6AE6B1" : (root.isWarning ? "#F1A08D" : "#FFFFFF")
-            opacity: root.isHappy ? 0.22 : (root.isWarning ? 0.18 : 0.0)
+        opacity: root.isHappy ? 0.22 : (root.isWarning ? 0.18 : 0.0)
             anchors.right: parent.right
             anchors.rightMargin: 112
             anchors.bottom: parent.bottom
@@ -204,6 +233,41 @@ Item {
             Behavior on color { ColorAnimation { duration: 120 } }
         }
     }
+
+    Text {
+        anchors.right: facePlate.right
+        anchors.rightMargin: 18
+        anchors.top: facePlate.top
+        anchors.topMargin: 16
+        text: root.isSleeping ? "zZ" : ""
+        color: Colors.textSecondary
+        font.family: Typography.monoFamily
+        font.pixelSize: 18
+        opacity: root.isSleeping ? 0.9 : 0.0
+        Behavior on opacity { NumberAnimation { duration: 220 } }
+    }
+
+    Timer {
+        id: sleepTimer
+        interval: 16000
+        repeat: false
+        onTriggered: {
+            if (!root.micActive && !root.speakingActive && root.faceState === "idle") {
+                root.sleepMode = true
+            }
+        }
+    }
+
+    onFaceStateChanged: {
+        if (sleepMode && faceState !== "idle") {
+            sleepMode = false
+        }
+        refreshSleepTimer()
+    }
+
+    onMicActiveChanged: refreshSleepTimer()
+    onSpeakingActiveChanged: refreshSleepTimer()
+    Component.onCompleted: refreshSleepTimer()
 
     Timer {
         id: blinkTimer

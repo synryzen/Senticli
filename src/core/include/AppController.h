@@ -47,6 +47,8 @@ class AppController : public QObject
     Q_PROPERTY(QStringList duplexSmoothnessOptions READ duplexSmoothnessOptions CONSTANT)
     Q_PROPERTY(QString personality READ personality WRITE setPersonality NOTIFY personalityChanged)
     Q_PROPERTY(QStringList personalities READ personalities CONSTANT)
+    Q_PROPERTY(QString faceStyle READ faceStyle WRITE setFaceStyle NOTIFY faceStyleChanged)
+    Q_PROPERTY(QStringList faceStyles READ faceStyles CONSTANT)
     Q_PROPERTY(QString gender READ gender WRITE setGender NOTIFY genderChanged)
     Q_PROPERTY(QStringList genders READ genders CONSTANT)
     Q_PROPERTY(QString voiceStyle READ voiceStyle WRITE setVoiceStyle NOTIFY voiceStyleChanged)
@@ -60,6 +62,7 @@ class AppController : public QObject
     Q_PROPERTY(QString folderScope READ folderScope NOTIFY folderScopeChanged)
     Q_PROPERTY(bool micActive READ micActive NOTIFY micActiveChanged)
     Q_PROPERTY(qreal voiceInputLevel READ voiceInputLevel NOTIFY voiceInputLevelChanged)
+    Q_PROPERTY(int mouthBeatMs READ mouthBeatMs NOTIFY mouthBeatMsChanged)
     Q_PROPERTY(bool speakingActive READ speakingActive NOTIFY speakingActiveChanged)
     Q_PROPERTY(bool streamingActive READ streamingActive NOTIFY streamingActiveChanged)
     Q_PROPERTY(bool commandRunning READ commandRunning NOTIFY commandRunningChanged)
@@ -99,6 +102,8 @@ public:
     QStringList duplexSmoothnessOptions() const;
     QString personality() const;
     QStringList personalities() const;
+    QString faceStyle() const;
+    QStringList faceStyles() const;
     QString gender() const;
     QStringList genders() const;
     QString voiceStyle() const;
@@ -112,6 +117,7 @@ public:
     QString folderScope() const;
     bool micActive() const;
     qreal voiceInputLevel() const;
+    int mouthBeatMs() const;
     bool speakingActive() const;
     bool streamingActive() const;
     bool commandRunning() const;
@@ -142,6 +148,7 @@ public:
     Q_INVOKABLE void setVadSensitivity(int value);
     Q_INVOKABLE void setDuplexSmoothness(const QString &value);
     Q_INVOKABLE void setPersonality(const QString &personality);
+    Q_INVOKABLE void setFaceStyle(const QString &faceStyle);
     Q_INVOKABLE void setGender(const QString &gender);
     Q_INVOKABLE void setVoiceStyle(const QString &voiceStyle);
     Q_INVOKABLE void setTtsEnabled(bool enabled);
@@ -180,6 +187,7 @@ signals:
     void vadSensitivityChanged();
     void duplexSmoothnessChanged();
     void personalityChanged();
+    void faceStyleChanged();
     void genderChanged();
     void voiceStyleChanged();
     void ttsEnabledChanged();
@@ -191,6 +199,7 @@ signals:
     void folderScopeChanged();
     void micActiveChanged();
     void voiceInputLevelChanged();
+    void mouthBeatMsChanged();
     void speakingActiveChanged();
     void streamingActiveChanged();
     void commandRunningChanged();
@@ -202,6 +211,7 @@ private:
     void setStatusText(const QString &text);
     void setModelStatus(const QString &text);
     void setVoiceInputLevel(qreal level);
+    void setMouthBeatMs(int beatMs);
     void setStreamingActive(bool active);
     void updateStreamingMessageDisplay(bool showCursor);
     void queueStreamText(const QString &text);
@@ -302,6 +312,7 @@ private:
     int m_vadSensitivity = 50;
     QString m_duplexSmoothness = "Balanced";
     QString m_personality = "Helpful";
+    QString m_faceStyle = "Loona";
     QString m_gender = "Neutral";
     QString m_voiceStyle = "Default";
     bool m_ttsEnabled = false;
@@ -312,6 +323,7 @@ private:
     QString m_folderScope = "~/Documents, ~/Projects";
     bool m_micActive = false;
     qreal m_voiceInputLevel = 0.0;
+    int m_mouthBeatMs = 180;
     bool m_speakingActive = false;
     bool m_streamingActive = false;
     bool m_commandRunning = false;

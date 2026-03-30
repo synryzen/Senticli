@@ -62,7 +62,8 @@ AppController::AppController(QObject *parent)
         m_ttsQueueRunning = true;
         m_echoSuppressUntilMs = m_runtimeClock.elapsed() + echoSuppressStartMs();
         const QString expression = m_speakingExpression;
-        QTimer::singleShot(110, this, [this, expression]() {
+        const int startLeadMs = m_ttsBinary.endsWith("spd-say") ? 260 : 170;
+        QTimer::singleShot(startLeadMs, this, [this, expression]() {
             if (m_ttsProcess.state() == QProcess::NotRunning) {
                 return;
             }
@@ -286,6 +287,16 @@ QStringList AppController::personalities() const
     return {"Helpful", "Professional", "Witty", "Teacher", "Hacker", "Calm"};
 }
 
+QString AppController::faceStyle() const
+{
+    return m_faceStyle;
+}
+
+QStringList AppController::faceStyles() const
+{
+    return {"Loona", "Terminal", "Orb"};
+}
+
 QString AppController::gender() const
 {
     return m_gender;
@@ -352,6 +363,11 @@ bool AppController::micActive() const
 qreal AppController::voiceInputLevel() const
 {
     return m_voiceInputLevel;
+}
+
+int AppController::mouthBeatMs() const
+{
+    return m_mouthBeatMs;
 }
 
 bool AppController::speakingActive() const
@@ -966,6 +982,31 @@ void AppController::setPersonality(const QString &personality)
     saveSettings();
 }
 
+void AppController::setFaceStyle(const QString &faceStyle)
+{
+    const QString trimmed = faceStyle.trimmed();
+    QString resolved;
+    for (const QString &candidate : faceStyles()) {
+        if (candidate.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            resolved = candidate;
+            break;
+        }
+    }
+
+    if (resolved.isEmpty() || m_faceStyle == resolved) {
+        return;
+    }
+
+    m_faceStyle = resolved;
+    emit faceStyleChanged();
+    setModelStatus("Face style: " + m_faceStyle);
+    appendAudit("Face style set: " + m_faceStyle);
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
 void AppController::setGender(const QString &gender)
 {
     const QString trimmed = gender.trimmed();
@@ -1339,6 +1380,16 @@ void AppController::setVoiceInputLevel(qreal level)
     emit voiceInputLevelChanged();
 }
 
+void AppController::setMouthBeatMs(int beatMs)
+{
+    const int clamped = qBound(110, beatMs, 420);
+    if (m_mouthBeatMs == clamped) {
+        return;
+    }
+    m_mouthBeatMs = clamped;
+    emit mouthBeatMsChanged();
+}
+
 void AppController::setStreamingActive(bool active)
 {
     if (m_streamingActive == active) {
@@ -1586,6 +1637,19 @@ bool AppController::speakText(const QString &text)
     if (toSpeak.size() > 700) {
         toSpeak = toSpeak.left(700);
     }
+
+    const QStringList words = toSpeak.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+    const int wordCount = qMax(1, words.size());
+    int targetWordMs = 210;
+    if (m_voiceStyle == "Soft") {
+        targetWordMs = 245;
+    } else if (m_voiceStyle == "Bright") {
+        targetWordMs = 175;
+    } else if (m_voiceStyle == "Narrator") {
+        targetWordMs = 275;
+    }
+    const int estimatedMs = qMax(wordCount * targetWordMs, toSpeak.size() * 26);
+    setMouthBeatMs(qMax(110, estimatedMs / wordCount));
 
     if (m_ttsBinary.isEmpty()) {
         m_ttsBinary = findTtsBinary();
@@ -1856,6 +1920,10 @@ void AppController::loadSettings()
     if (!personalities().contains(m_personality)) {
         m_personality = "Helpful";
     }
+    m_faceStyle = settings.value("ui/faceStyle", m_faceStyle).toString();
+    if (!faceStyles().contains(m_faceStyle)) {
+        m_faceStyle = "Loona";
+    }
     m_gender = settings.value("ai/gender", m_gender).toString();
     if (!genders().contains(m_gender)) {
         m_gender = "Neutral";
@@ -1911,6 +1979,7 @@ void AppController::saveSettings() const
     settings.setValue("voice/duplexSmoothness", m_duplexSmoothness);
     settings.setValue("memory/enabled", m_memoryEnabled);
     settings.setValue("permissions/grantedFolders", m_grantedFolders);
+    settings.setValue("ui/faceStyle", m_faceStyle);
     settings.setValue("ui/setupComplete", m_setupComplete);
 }
 
@@ -2071,6 +2140,7 @@ void AppController::handleInput(const QString &text)
             "/stt-endpoint <url>\n"
             "/stt-model <id>\n"
             "/personality <Helpful|Professional|Witty|Teacher|Hacker|Calm>\n"
+            "/face-style <Loona|Terminal|Orb>\n"
             "/gender <Neutral|Male|Female>\n"
             "/voice-style <Default|Soft|Bright|Narrator>\n"
             "/voices\n"
@@ -2303,6 +2373,23 @@ void AppController::handleInput(const QString &text)
 
     if (lowered.startsWith("/personality ")) {
         setPersonality(text.mid(13).trimmed());
+        return;
+    }
+
+    if (lowered.startsWith("/face-style ")) {
+        const QString value = text.mid(12).trimmed();
+        bool valid = false;
+        for (const QString &candidate : faceStyles()) {
+            if (candidate.compare(value, Qt::CaseInsensitive) == 0) {
+                valid = true;
+                break;
+            }
+        }
+        if (!valid) {
+            postAssistant("Usage: /face-style <Loona|Terminal|Orb>", "warning");
+            return;
+        }
+        setFaceStyle(value);
         return;
     }
 
@@ -2703,9 +2790,9 @@ QString AppController::systemPersonaPrompt() const
     return QString(
                "You are %1, a local Linux terminal companion. "
                "Keep replies %2. %3 "
-               "Current presentation preferences: personality=%4, voice-gender=%5, voice-style=%6. "
+               "Current presentation preferences: personality=%4, face-style=%5, voice-gender=%6, voice-style=%7. "
                "When suggesting actions, be explicit and safe.")
-        .arg(m_assistantName, tone, conversationInstruction, m_personality, m_gender, m_voiceStyle);
+        .arg(m_assistantName, tone, conversationInstruction, m_personality, m_faceStyle, m_gender, m_voiceStyle);
 }
 
 void AppController::postAssistant(const QString &text, const QString &kind)
@@ -3045,7 +3132,7 @@ bool AppController::isAssistantAudible() const
 QString AppController::expressionFromAssistantText(const QString &text, const QString &kind) const
 {
     if (kind == "warning") {
-        return "warning";
+        return "angry";
     }
 
     const QString lowered = text.toLower();
@@ -3055,7 +3142,7 @@ QString AppController::expressionFromAssistantText(const QString &text, const QS
         || lowered.contains("can't")
         || lowered.contains("permission denied")
         || lowered.contains("not found")) {
-        return "warning";
+        return "angry";
     }
 
     if (lowered.contains("i'm not sure")
@@ -3064,6 +3151,13 @@ QString AppController::expressionFromAssistantText(const QString &text, const QS
         || lowered.contains("do you mean")
         || lowered.contains("could you clarify")) {
         return "confused";
+    }
+
+    if (lowered.contains("sorry")
+        || lowered.contains("i apologize")
+        || lowered.contains("unfortunately")
+        || lowered.contains("wish i could")) {
+        return "sad";
     }
 
     if (lowered.contains("done")
@@ -3390,6 +3484,7 @@ void AppController::loadProfile(const QString &profileName)
     QStringList profileWakeResponses = settings.value(base + "wakeResponses", m_wakeResponses).toStringList();
     const bool profileConversationalMode = settings.value(base + "conversationalMode", m_conversationalMode).toBool();
     const QString profilePersonality = settings.value(base + "personality", m_personality).toString();
+    const QString profileFaceStyle = settings.value(base + "faceStyle", m_faceStyle).toString();
     const QString profileGender = settings.value(base + "gender", m_gender).toString();
     const QString profileVoiceStyle = settings.value(base + "voiceStyle", m_voiceStyle).toString();
     const bool profileDuplexVoiceEnabled = settings.value(base + "duplexVoiceEnabled", m_duplexVoiceEnabled).toBool();
@@ -3472,6 +3567,11 @@ void AppController::loadProfile(const QString &profileName)
         emit personalityChanged();
     }
 
+    if (faceStyles().contains(profileFaceStyle) && m_faceStyle != profileFaceStyle) {
+        m_faceStyle = profileFaceStyle;
+        emit faceStyleChanged();
+    }
+
     if (genders().contains(profileGender) && m_gender != profileGender) {
         m_gender = profileGender;
         emit genderChanged();
@@ -3530,6 +3630,7 @@ void AppController::saveProfileToSettings(const QString &profileName) const
     settings.setValue(base + "wakeResponses", m_wakeResponses);
     settings.setValue(base + "conversationalMode", m_conversationalMode);
     settings.setValue(base + "personality", m_personality);
+    settings.setValue(base + "faceStyle", m_faceStyle);
     settings.setValue(base + "gender", m_gender);
     settings.setValue(base + "voiceStyle", m_voiceStyle);
     settings.setValue(base + "duplexVoiceEnabled", m_duplexVoiceEnabled);

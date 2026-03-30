@@ -11,6 +11,8 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 
 - Two-pane layout matching the product concept
 - Animated digital face with status-driven expressions
+- Loona-inspired companion expression set (happy/sad/angry/confused/sleeping + look-around)
+- Selectable face styles (`Loona`, `Terminal`, `Orb`)
 - Terminal-style message stream with user/assistant/system bubbles
 - Terminal-native bottom pane with line-based output and CLI prompt styling
 - Terminal niceties: Up/Down command history and ANSI-colored shell output
@@ -31,6 +33,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - One-click duplex quick-tune presets in AI Settings (Fast/Balanced/Human/Studio)
 - Voice-utterance buffering combines partial STT fragments before dispatch for smoother turn-taking
 - Live listening meter on the face panel while mic is active
+- Word-cadence mouth timing (less pre-audio flapping, smoother speech sync)
 - Dedicated AI Settings panel with:
   - saved connection profiles (save/load/delete presets)
   - provider + endpoint controls
@@ -79,6 +82,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - `/stt-endpoint <url|auto>`
   - `/stt-model <id>`
   - `/personality <Helpful|Professional|Witty|Teacher|Hacker|Calm>`
+  - `/face-style <Loona|Terminal|Orb>`
   - `/gender <Neutral|Male|Female>`
   - `/voice-style <Default|Soft|Bright|Narrator>`
   - `/voices`

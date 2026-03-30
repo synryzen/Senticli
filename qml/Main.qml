@@ -22,6 +22,8 @@ ApplicationWindow {
             statusText: backend.statusText
             micActive: backend.micActive
             voiceInputLevel: backend.voiceInputLevel
+            faceStyle: backend.faceStyle
+            mouthBeatMs: backend.mouthBeatMs
             speakingActive: backend.speakingActive
         }
 
@@ -107,6 +109,8 @@ ApplicationWindow {
             duplexSmoothnessOptions: backend.duplexSmoothnessOptions
             personality: backend.personality
             personalities: backend.personalities
+            faceStyle: backend.faceStyle
+            faceStyles: backend.faceStyles
             gender: backend.gender
             genders: backend.genders
             voiceStyle: backend.voiceStyle
@@ -182,6 +186,9 @@ ApplicationWindow {
             }
             onPersonalitySelected: function(value) {
                 backend.setPersonality(value)
+            }
+            onFaceStyleSelected: function(value) {
+                backend.setFaceStyle(value)
             }
             onGenderSelected: function(value) {
                 backend.setGender(value)
