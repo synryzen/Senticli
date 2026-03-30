@@ -47,6 +47,7 @@ ApplicationWindow {
             Layout.fillHeight: true
             messageModel: backend.messageModel
             actionRunning: backend.actionRunning
+            micActive: backend.micActive
             pendingApproval: backend.pendingApproval
             pendingApprovalText: backend.pendingApprovalText
             onInputSubmitted: function(text) {
@@ -97,6 +98,9 @@ ApplicationWindow {
             wakeEnabled: backend.wakeEnabled
             wakeResponses: backend.wakeResponses
             conversationalMode: backend.conversationalMode
+            duplexVoiceEnabled: backend.duplexVoiceEnabled
+            transcriptionEndpoint: backend.transcriptionEndpoint
+            transcriptionModel: backend.transcriptionModel
             personality: backend.personality
             personalities: backend.personalities
             gender: backend.gender
@@ -156,6 +160,15 @@ ApplicationWindow {
             }
             onConversationalModeToggled: function(enabled) {
                 backend.setConversationalMode(enabled)
+            }
+            onDuplexVoiceEnabledToggled: function(enabled) {
+                backend.setDuplexVoiceEnabled(enabled)
+            }
+            onTranscriptionEndpointSubmitted: function(value) {
+                backend.setTranscriptionEndpoint(value)
+            }
+            onTranscriptionModelSubmitted: function(value) {
+                backend.setTranscriptionModel(value)
             }
             onPersonalitySelected: function(value) {
                 backend.setPersonality(value)

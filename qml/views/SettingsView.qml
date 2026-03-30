@@ -22,6 +22,9 @@ Rectangle {
     property bool wakeEnabled: true
     property var wakeResponses: ["How can I help you?"]
     property bool conversationalMode: true
+    property bool duplexVoiceEnabled: false
+    property string transcriptionEndpoint: ""
+    property string transcriptionModel: "whisper-1"
     property string personality: "Helpful"
     property var personalities: ["Helpful", "Professional", "Witty", "Teacher", "Hacker", "Calm"]
     property string gender: "Neutral"
@@ -51,6 +54,9 @@ Rectangle {
     signal wakeEnabledToggled(bool enabled)
     signal wakeResponsesSubmitted(var responses)
     signal conversationalModeToggled(bool enabled)
+    signal duplexVoiceEnabledToggled(bool enabled)
+    signal transcriptionEndpointSubmitted(string endpoint)
+    signal transcriptionModelSubmitted(string model)
     signal personalitySelected(string personality)
     signal genderSelected(string gender)
     signal voiceStyleSelected(string voiceStyle)
@@ -340,6 +346,51 @@ Rectangle {
                                 checked: root.conversationalMode
                                 onToggled: root.conversationalModeToggled(checked)
                             }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Switch {
+                                id: duplexVoiceSwitch
+                                text: "Duplex Voice (Beta)"
+                                checked: root.duplexVoiceEnabled
+                                onToggled: root.duplexVoiceEnabledToggled(checked)
+                            }
+
+                            TextField {
+                                id: sttEndpointField
+                                Layout.fillWidth: true
+                                placeholderText: "STT endpoint (auto: /v1/audio/transcriptions)"
+                                font.family: Typography.monoFamily
+                                font.pixelSize: Typography.smallSize
+                                onAccepted: root.transcriptionEndpointSubmitted(text)
+                            }
+
+                            Button {
+                                text: "Set STT URL"
+                                onClicked: root.transcriptionEndpointSubmitted(sttEndpointField.text)
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            TextField {
+                                id: sttModelField
+                                Layout.preferredWidth: 220
+                                placeholderText: "STT model (example: whisper-1)"
+                                font.family: Typography.monoFamily
+                                font.pixelSize: Typography.smallSize
+                                onAccepted: root.transcriptionModelSubmitted(text)
+                            }
+
+                            Button {
+                                text: "Set STT Model"
+                                onClicked: root.transcriptionModelSubmitted(sttModelField.text)
+                            }
+
+                            Item { Layout.fillWidth: true }
                         }
 
                         Label {
@@ -838,6 +889,18 @@ Rectangle {
         conversationalSwitch.checked = conversationalMode
     }
 
+    onDuplexVoiceEnabledChanged: {
+        duplexVoiceSwitch.checked = duplexVoiceEnabled
+    }
+
+    onTranscriptionEndpointChanged: {
+        sttEndpointField.text = transcriptionEndpoint
+    }
+
+    onTranscriptionModelChanged: {
+        sttModelField.text = transcriptionModel
+    }
+
     onTtsEnabledChanged: {
         ttsSwitch.checked = ttsEnabled
     }
@@ -855,6 +918,9 @@ Rectangle {
         wakeEnabledSwitch.checked = wakeEnabled
         wakeResponsesArea.text = wakeResponses.join("\n")
         conversationalSwitch.checked = conversationalMode
+        duplexVoiceSwitch.checked = duplexVoiceEnabled
+        sttEndpointField.text = transcriptionEndpoint
+        sttModelField.text = transcriptionModel
         ttsSwitch.checked = ttsEnabled
         memorySwitch.checked = memoryEnabled
 

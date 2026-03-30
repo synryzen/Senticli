@@ -25,6 +25,8 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Adaptive stream smoothing to reduce bursty chunk jumps
 - `Instant` stream mode for lowest-latency output on powerful hardware
 - Sentence-level streaming TTS with barge-in interrupt for smoother conversation flow
+- Duplex voice beta (continuous mic chunks + STT endpoint + wake phrase routing)
+- Echo suppression in duplex mode to avoid self-transcription while speaking
 - Dedicated AI Settings panel with:
   - saved connection profiles (save/load/delete presets)
   - provider + endpoint controls
@@ -37,6 +39,8 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - wake phrase enable/disable
   - editable wake responses
   - conversational mode toggle
+  - duplex voice toggle
+  - STT endpoint + STT model controls
   - personality preset selector
   - voice gender + voice style selectors
   - voice and memory toggles
@@ -63,6 +67,9 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
   - `/name <assistant-name>`
   - `/wake <on|off>`
   - `/conversation <on|off>`
+  - `/duplex <on|off>`
+  - `/stt-endpoint <url|auto>`
+  - `/stt-model <id>`
   - `/personality <Helpful|Professional|Witty|Teacher|Hacker|Calm>`
   - `/gender <Neutral|Male|Female>`
   - `/voice-style <Default|Soft|Bright|Narrator>`
@@ -119,7 +126,8 @@ sudo apt update
 sudo apt install -y \
   build-essential cmake ninja-build pkg-config \
   qt6-base-dev qt6-declarative-dev qt6-tools-dev \
-  qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts
+  qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts \
+  speech-dispatcher alsa-utils
 ```
 
 If your distro package names differ, install equivalent Qt 6 Quick + QML + Quick Controls dev/runtime modules.
@@ -156,11 +164,16 @@ You can do the same via commands:
 /name Nova
 /wake on
 /conversation on
+/duplex on
+/stt-endpoint https://lm.msidragon.com/v1/audio/transcriptions
+/stt-model whisper-1
 /personality teacher
 /gender female
 /voice-style narrator
 /profile-save my-cloudflare-route
 ```
+
+If your STT endpoint is blank, Senticli auto-derives it from your chat completion URL.
 
 ## Packaging
 
@@ -175,7 +188,7 @@ Artifacts include `.tar.gz` and `.deb` packages.
 
 ## Next Milestones
 
-1. Add speech-to-text backend (push-to-talk)
+1. Add selectable realistic TTS voice packs (Piper/voice models)
 2. Add richer folder search (recursive + filters + previews)
 3. Add theme packs and companion face packs
 4. Add plugin/tool system for custom actions

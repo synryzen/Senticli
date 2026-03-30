@@ -8,6 +8,7 @@
 #include <QTimer>
 #include <QProcess>
 #include <QHash>
+#include <QElapsedTimer>
 
 #include "models/MessageModel.h"
 
@@ -38,6 +39,9 @@ class AppController : public QObject
     Q_PROPERTY(bool wakeEnabled READ wakeEnabled WRITE setWakeEnabled NOTIFY wakeEnabledChanged)
     Q_PROPERTY(QStringList wakeResponses READ wakeResponses NOTIFY wakeResponsesChanged)
     Q_PROPERTY(bool conversationalMode READ conversationalMode WRITE setConversationalMode NOTIFY conversationalModeChanged)
+    Q_PROPERTY(bool duplexVoiceEnabled READ duplexVoiceEnabled WRITE setDuplexVoiceEnabled NOTIFY duplexVoiceEnabledChanged)
+    Q_PROPERTY(QString transcriptionEndpoint READ transcriptionEndpoint WRITE setTranscriptionEndpoint NOTIFY transcriptionEndpointChanged)
+    Q_PROPERTY(QString transcriptionModel READ transcriptionModel WRITE setTranscriptionModel NOTIFY transcriptionModelChanged)
     Q_PROPERTY(QString personality READ personality WRITE setPersonality NOTIFY personalityChanged)
     Q_PROPERTY(QStringList personalities READ personalities CONSTANT)
     Q_PROPERTY(QString gender READ gender WRITE setGender NOTIFY genderChanged)
@@ -83,6 +87,9 @@ public:
     bool wakeEnabled() const;
     QStringList wakeResponses() const;
     bool conversationalMode() const;
+    bool duplexVoiceEnabled() const;
+    QString transcriptionEndpoint() const;
+    QString transcriptionModel() const;
     QString personality() const;
     QStringList personalities() const;
     QString gender() const;
@@ -121,6 +128,9 @@ public:
     Q_INVOKABLE void setWakeEnabled(bool enabled);
     Q_INVOKABLE void setWakeResponses(const QStringList &responses);
     Q_INVOKABLE void setConversationalMode(bool enabled);
+    Q_INVOKABLE void setDuplexVoiceEnabled(bool enabled);
+    Q_INVOKABLE void setTranscriptionEndpoint(const QString &endpoint);
+    Q_INVOKABLE void setTranscriptionModel(const QString &model);
     Q_INVOKABLE void setPersonality(const QString &personality);
     Q_INVOKABLE void setGender(const QString &gender);
     Q_INVOKABLE void setVoiceStyle(const QString &voiceStyle);
@@ -154,6 +164,9 @@ signals:
     void wakeEnabledChanged();
     void wakeResponsesChanged();
     void conversationalModeChanged();
+    void duplexVoiceEnabledChanged();
+    void transcriptionEndpointChanged();
+    void transcriptionModelChanged();
     void personalityChanged();
     void genderChanged();
     void voiceStyleChanged();
@@ -194,6 +207,16 @@ private:
     int findSentenceBoundary(const QString &text) const;
     void setSpeakingActive(bool active);
     void stopSpeaking();
+    void startVoiceCaptureLoop();
+    void stopVoiceCaptureLoop();
+    void runVoiceCaptureChunk();
+    void handleVoiceCaptureFinished(int exitCode, QProcess::ExitStatus exitStatus);
+    bool wavHasSpeech(const QByteArray &wavData) const;
+    void requestTranscription(const QByteArray &wavData);
+    void routeVoiceTranscript(const QString &text);
+    bool isAssistantAudible() const;
+    QString expressionFromAssistantText(const QString &text, const QString &kind = "assistant") const;
+    QString normalizedTranscriptionUrl(const QString &endpoint) const;
     QString currentProjectKey() const;
     QString appDataDir() const;
     QString auditLogPath() const;
@@ -250,6 +273,9 @@ private:
                                    "Yep, talk to me.",
                                    "What would you like me to do?"};
     bool m_conversationalMode = true;
+    bool m_duplexVoiceEnabled = false;
+    QString m_transcriptionEndpoint;
+    QString m_transcriptionModel = "whisper-1";
     QString m_personality = "Helpful";
     QString m_gender = "Neutral";
     QString m_voiceStyle = "Default";
@@ -271,6 +297,7 @@ private:
     QPointer<QNetworkReply> m_activeChatReply;
     QPointer<QNetworkReply> m_activeModelsReply;
     QPointer<QNetworkReply> m_activeHealthReply;
+    QPointer<QNetworkReply> m_activeTranscriptionReply;
     QByteArray m_chatStreamBuffer;
     QByteArray m_chatRawBuffer;
     QString m_streamAccumulatedText;
@@ -285,8 +312,16 @@ private:
     bool m_ttsQueueRunning = false;
     QTimer m_streamFlushTimer;
     QTimer m_shellTimeoutTimer;
+    QTimer m_voiceCaptureRestartTimer;
     int m_shellOutputRow = -1;
     QProcess m_shellProcess;
+    QProcess m_voiceCaptureProcess;
+    QString m_voiceCaptureTempPath;
+    bool m_voiceCaptureRunning = false;
+    qint64 m_lastBargeInMs = 0;
+    qint64 m_echoSuppressUntilMs = 0;
+    QElapsedTimer m_runtimeClock;
+    QString m_speakingExpression = "speaking";
     QString m_lastShellCommand;
     QProcess m_ttsProcess;
     QString m_ttsBinary;

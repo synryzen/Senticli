@@ -3,6 +3,8 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QHttpMultiPart>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -15,6 +17,7 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QUrl>
+#include <QtEndian>
 
 namespace {
 QString expandPath(const QString &raw)
@@ -30,6 +33,8 @@ QString expandPath(const QString &raw)
 AppController::AppController(QObject *parent)
     : QObject(parent)
 {
+    m_runtimeClock.start();
+
     m_streamFlushTimer.setInterval(flushIntervalForProfile());
     m_streamFlushTimer.setSingleShot(false);
     connect(&m_streamFlushTimer, &QTimer::timeout, this, &AppController::flushStreamChunk);
@@ -54,15 +59,23 @@ AppController::AppController(QObject *parent)
 
     connect(&m_ttsProcess, &QProcess::started, this, [this]() {
         appendAudit("TTS started");
-        setSpeakingActive(true);
-        setFaceState("speaking");
-        setStatusText("Speaking...");
         m_ttsQueueRunning = true;
+        m_echoSuppressUntilMs = m_runtimeClock.elapsed() + 720;
+        const QString expression = m_speakingExpression;
+        QTimer::singleShot(110, this, [this, expression]() {
+            if (m_ttsProcess.state() == QProcess::NotRunning) {
+                return;
+            }
+            setSpeakingActive(true);
+            setFaceState(expression);
+            setStatusText("Speaking...");
+        });
     });
 
     connect(&m_ttsProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, [this](int, QProcess::ExitStatus) {
         appendAudit("TTS finished");
         m_ttsQueueRunning = false;
+        m_echoSuppressUntilMs = m_runtimeClock.elapsed() + 260;
         if (!m_ttsQueue.isEmpty()) {
             startNextTtsChunk();
             return;
@@ -75,6 +88,19 @@ AppController::AppController(QObject *parent)
             QTimer::singleShot(120, this, [this]() { finalizeAssistantState(); });
         }
     });
+
+    m_voiceCaptureRestartTimer.setSingleShot(true);
+    connect(&m_voiceCaptureRestartTimer, &QTimer::timeout, this, [this]() {
+        if (m_micActive && m_duplexVoiceEnabled) {
+            runVoiceCaptureChunk();
+        }
+    });
+
+    connect(
+        &m_voiceCaptureProcess,
+        qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+        this,
+        &AppController::handleVoiceCaptureFinished);
 
     loadSettings();
     m_streamFlushTimer.setInterval(flushIntervalForProfile());
@@ -98,6 +124,10 @@ AppController::AppController(QObject *parent)
             "assistant");
     } else {
         m_messageModel.addMessage("assistant", "Ready. Type /help for commands.", "assistant");
+    }
+
+    if (m_duplexVoiceEnabled && m_micActive) {
+        startVoiceCaptureLoop();
     }
 }
 
@@ -204,6 +234,21 @@ QStringList AppController::wakeResponses() const
 bool AppController::conversationalMode() const
 {
     return m_conversationalMode;
+}
+
+bool AppController::duplexVoiceEnabled() const
+{
+    return m_duplexVoiceEnabled;
+}
+
+QString AppController::transcriptionEndpoint() const
+{
+    return m_transcriptionEndpoint;
+}
+
+QString AppController::transcriptionModel() const
+{
+    return m_transcriptionModel;
 }
 
 QString AppController::personality() const
@@ -316,7 +361,7 @@ void AppController::sendUserInput(const QString &text)
         return;
     }
 
-    if (m_micActive) {
+    if (m_micActive && !m_duplexVoiceEnabled) {
         m_micActive = false;
         emit micActiveChanged();
     }
@@ -370,11 +415,16 @@ void AppController::toggleMic()
 
     if (m_micActive) {
         setFaceState("listening");
-        setStatusText("Listening (STT integration pending)...");
+        setStatusText(m_duplexVoiceEnabled ? "Duplex listening..." : "Listening (STT integration pending)...");
+        if (m_duplexVoiceEnabled) {
+            startVoiceCaptureLoop();
+        }
     } else if (m_pendingApproval) {
+        stopVoiceCaptureLoop();
         setFaceState("warning");
         setStatusText("Waiting for approval");
     } else {
+        stopVoiceCaptureLoop();
         setFaceState("idle");
         setStatusText("Ready");
     }
@@ -525,6 +575,13 @@ void AppController::setActiveProfile(const QString &profileName)
     }
 
     loadProfile(trimmed);
+    if (m_micActive) {
+        if (m_duplexVoiceEnabled) {
+            startVoiceCaptureLoop();
+        } else {
+            stopVoiceCaptureLoop();
+        }
+    }
     saveSettings();
     setModelStatus(QString("Loaded profile: %1").arg(trimmed));
     appendAudit(QString("Profile loaded: %1").arg(trimmed));
@@ -702,6 +759,65 @@ void AppController::setConversationalMode(bool enabled)
     emit conversationalModeChanged();
     setModelStatus(m_conversationalMode ? "Conversational mode enabled" : "Conversational mode disabled");
     appendAudit(QString("Conversational mode %1").arg(m_conversationalMode ? "enabled" : "disabled"));
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
+void AppController::setDuplexVoiceEnabled(bool enabled)
+{
+    if (m_duplexVoiceEnabled == enabled) {
+        return;
+    }
+
+    m_duplexVoiceEnabled = enabled;
+    emit duplexVoiceEnabledChanged();
+    setModelStatus(m_duplexVoiceEnabled ? "Duplex voice beta enabled" : "Duplex voice beta disabled");
+    appendAudit(QString("Duplex voice %1").arg(m_duplexVoiceEnabled ? "enabled" : "disabled"));
+    if (m_micActive) {
+        if (m_duplexVoiceEnabled) {
+            startVoiceCaptureLoop();
+        } else {
+            stopVoiceCaptureLoop();
+        }
+    }
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
+void AppController::setTranscriptionEndpoint(const QString &endpoint)
+{
+    const QString normalized = normalizedTranscriptionUrl(endpoint);
+    if (m_transcriptionEndpoint == normalized) {
+        return;
+    }
+
+    m_transcriptionEndpoint = normalized;
+    emit transcriptionEndpointChanged();
+    setModelStatus(m_transcriptionEndpoint.isEmpty() ? "Transcription endpoint: auto"
+                                                     : "Transcription endpoint updated");
+    appendAudit(m_transcriptionEndpoint.isEmpty() ? "Transcription endpoint auto"
+                                                  : "Transcription endpoint changed: " + m_transcriptionEndpoint);
+    if (!m_activeProfile.isEmpty()) {
+        saveProfileToSettings(m_activeProfile);
+    }
+    saveSettings();
+}
+
+void AppController::setTranscriptionModel(const QString &model)
+{
+    const QString trimmed = model.trimmed();
+    if (trimmed.isEmpty() || m_transcriptionModel == trimmed) {
+        return;
+    }
+
+    m_transcriptionModel = trimmed;
+    emit transcriptionModelChanged();
+    setModelStatus("Transcription model: " + m_transcriptionModel);
+    appendAudit("Transcription model changed: " + m_transcriptionModel);
     if (!m_activeProfile.isEmpty()) {
         saveProfileToSettings(m_activeProfile);
     }
@@ -1015,6 +1131,11 @@ void AppController::cancelActiveRequest()
         canceledSomething = true;
     }
 
+    if (m_activeTranscriptionReply) {
+        m_activeTranscriptionReply->abort();
+        canceledSomething = true;
+    }
+
     if (!canceledSomething) {
         setModelStatus("Nothing to cancel");
     } else {
@@ -1187,6 +1308,7 @@ void AppController::maybeFinalizeSuccessfulStream()
     }
 
     const QString finalText = m_streamAccumulatedText;
+    m_speakingExpression = expressionFromAssistantText(finalText);
     updateStreamingMessageDisplay(false);
     setModelStatus(QString("Connected: %1").arg(m_selectedModel));
     appendAudit("Completion received");
@@ -1512,6 +1634,8 @@ void AppController::stopSpeaking()
     m_ttsProcess.kill();
     m_ttsProcess.waitForFinished(300);
     appendAudit("TTS stopped");
+    m_ttsQueueRunning = false;
+    m_echoSuppressUntilMs = m_runtimeClock.elapsed() + 200;
     setSpeakingActive(false);
 }
 
@@ -1588,6 +1712,13 @@ void AppController::loadSettings()
                            "What would you like me to do?"};
     }
     m_conversationalMode = settings.value("ai/conversationalMode", m_conversationalMode).toBool();
+    m_duplexVoiceEnabled = settings.value("voice/duplexEnabled", m_duplexVoiceEnabled).toBool();
+    m_transcriptionEndpoint = normalizedTranscriptionUrl(
+        settings.value("voice/transcriptionEndpoint", m_transcriptionEndpoint).toString());
+    m_transcriptionModel = settings.value("voice/transcriptionModel", m_transcriptionModel).toString().trimmed();
+    if (m_transcriptionModel.isEmpty()) {
+        m_transcriptionModel = "whisper-1";
+    }
     m_personality = settings.value("ai/personality", m_personality).toString();
     if (!personalities().contains(m_personality)) {
         m_personality = "Helpful";
@@ -1640,6 +1771,9 @@ void AppController::saveSettings() const
     settings.setValue("ai/gender", m_gender);
     settings.setValue("voice/ttsEnabled", m_ttsEnabled);
     settings.setValue("voice/style", m_voiceStyle);
+    settings.setValue("voice/duplexEnabled", m_duplexVoiceEnabled);
+    settings.setValue("voice/transcriptionEndpoint", m_transcriptionEndpoint);
+    settings.setValue("voice/transcriptionModel", m_transcriptionModel);
     settings.setValue("memory/enabled", m_memoryEnabled);
     settings.setValue("permissions/grantedFolders", m_grantedFolders);
     settings.setValue("ui/setupComplete", m_setupComplete);
@@ -1795,6 +1929,9 @@ void AppController::handleInput(const QString &text)
             "/name <assistant-name>\n"
             "/wake on|off\n"
             "/conversation on|off\n"
+            "/duplex on|off\n"
+            "/stt-endpoint <url>\n"
+            "/stt-model <id>\n"
             "/personality <Helpful|Professional|Witty|Teacher|Hacker|Calm>\n"
             "/gender <Neutral|Male|Female>\n"
             "/voice-style <Default|Soft|Bright|Narrator>\n"
@@ -1956,6 +2093,35 @@ void AppController::handleInput(const QString &text)
         return;
     }
 
+    if (lowered.startsWith("/duplex ")) {
+        const QString value = lowered.mid(8).trimmed();
+        if (value == "on") {
+            setDuplexVoiceEnabled(true);
+            return;
+        }
+        if (value == "off") {
+            setDuplexVoiceEnabled(false);
+            return;
+        }
+        postAssistant("Usage: /duplex on|off", "warning");
+        return;
+    }
+
+    if (lowered.startsWith("/stt-endpoint ")) {
+        const QString value = text.mid(14).trimmed();
+        if (value.toLower() == "auto" || value.toLower() == "clear") {
+            setTranscriptionEndpoint("");
+            return;
+        }
+        setTranscriptionEndpoint(value);
+        return;
+    }
+
+    if (lowered.startsWith("/stt-model ")) {
+        setTranscriptionModel(text.mid(11).trimmed());
+        return;
+    }
+
     if (lowered.startsWith("/speed ")) {
         setSmoothingProfile(text.mid(7).trimmed());
         return;
@@ -2082,7 +2248,7 @@ void AppController::finalizeAssistantState()
         setStatusText("Waiting for approval");
     } else if (m_micActive) {
         setFaceState("listening");
-        setStatusText("Listening...");
+        setStatusText(m_duplexVoiceEnabled ? "Duplex listening..." : "Listening...");
     } else {
         setFaceState("idle");
         setStatusText("Ready");
@@ -2107,6 +2273,7 @@ void AppController::requestRemoteCompletion(const QString &text)
 
     QNetworkRequest request{QUrl(completionUrl)};
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    request.setRawHeader("Accept", "text/event-stream");
     applyAuthHeader(request);
 
     QJsonArray messages;
@@ -2207,8 +2374,13 @@ void AppController::requestRemoteCompletion(const QString &text)
                 setFaceState("speaking");
                 setStatusText("Streaming response...");
             } else {
-                setFaceState("thinking");
-                setStatusText("Receiving response...");
+                if (!isAssistantAudible()) {
+                    setFaceState("thinking");
+                    setStatusText("Receiving response...");
+                } else {
+                    setFaceState(m_speakingExpression);
+                    setStatusText("Speaking...");
+                }
                 m_ttsSentenceBuffer += token;
                 processTtsSentenceBuffer(false);
                 startNextTtsChunk();
@@ -2264,6 +2436,16 @@ void AppController::requestRemoteCompletion(const QString &text)
                     const QString content = extractContentFromChoice(choices.first().toObject()).trimmed();
                     if (!content.isEmpty()) {
                         m_streamSawToken = true;
+                        m_speakingExpression = expressionFromAssistantText(content);
+                        if (!m_ttsEnabled) {
+                            setSpeakingActive(true);
+                            setFaceState(m_speakingExpression);
+                            setStatusText("Responding...");
+                        } else {
+                            m_ttsSentenceBuffer += content;
+                            processTtsSentenceBuffer(false);
+                            startNextTtsChunk();
+                        }
                         queueStreamText(content);
                     }
                 }
@@ -2363,6 +2545,8 @@ void AppController::postAssistant(const QString &text, const QString &kind)
         return;
     }
 
+    m_speakingExpression = expressionFromAssistantText(text, kind);
+
     if (m_ttsEnabled) {
         clearTtsQueue();
         enqueueTtsChunk(text);
@@ -2374,7 +2558,7 @@ void AppController::postAssistant(const QString &text, const QString &kind)
     }
 
     setSpeakingActive(true);
-    setFaceState("speaking");
+    setFaceState(m_speakingExpression);
     setStatusText("Responding...");
     const int ms = qBound(220, text.size() * 16, 1500);
     QTimer::singleShot(ms, this, [this]() { finalizeAssistantState(); });
@@ -2399,6 +2583,312 @@ void AppController::runShellCommandPreview(const QString &command, bool approved
         m_messageModel.addMessage("system", "Approval received.", "system");
     }
     startShellCommand(command);
+}
+
+void AppController::startVoiceCaptureLoop()
+{
+    if (!m_duplexVoiceEnabled || !m_micActive) {
+        return;
+    }
+
+    if (m_voiceCaptureTempPath.isEmpty()) {
+        m_voiceCaptureTempPath = appDataDir() + "/voice_chunk.wav";
+    }
+    runVoiceCaptureChunk();
+}
+
+void AppController::stopVoiceCaptureLoop()
+{
+    m_voiceCaptureRestartTimer.stop();
+    if (m_voiceCaptureProcess.state() != QProcess::NotRunning) {
+        m_voiceCaptureProcess.kill();
+        m_voiceCaptureProcess.waitForFinished(250);
+    }
+    m_voiceCaptureRunning = false;
+}
+
+void AppController::runVoiceCaptureChunk()
+{
+    if (!m_duplexVoiceEnabled || !m_micActive || m_voiceCaptureRunning) {
+        return;
+    }
+
+    const QString arecordBin = QStandardPaths::findExecutable("arecord");
+    if (arecordBin.isEmpty()) {
+        setModelStatus("arecord not found for duplex voice");
+        return;
+    }
+
+    if (m_voiceCaptureTempPath.isEmpty()) {
+        m_voiceCaptureTempPath = appDataDir() + "/voice_chunk.wav";
+    }
+    QFile::remove(m_voiceCaptureTempPath);
+
+    m_voiceCaptureRunning = true;
+    m_voiceCaptureProcess.start(
+        arecordBin,
+        {"-q", "-f", "S16_LE", "-r", "16000", "-c", "1", "-d", "2", "-t", "wav", m_voiceCaptureTempPath});
+    if (!m_voiceCaptureProcess.waitForStarted(150)) {
+        m_voiceCaptureRunning = false;
+        setModelStatus("Unable to start arecord for duplex voice");
+        if (m_duplexVoiceEnabled && m_micActive) {
+            m_voiceCaptureRestartTimer.start(400);
+        }
+    }
+}
+
+void AppController::handleVoiceCaptureFinished(int exitCode, QProcess::ExitStatus exitStatus)
+{
+    Q_UNUSED(exitCode);
+    Q_UNUSED(exitStatus);
+
+    m_voiceCaptureRunning = false;
+    if (!m_duplexVoiceEnabled || !m_micActive) {
+        return;
+    }
+
+    QFile file(m_voiceCaptureTempPath);
+    if (file.open(QIODevice::ReadOnly)) {
+        const QByteArray wavData = file.readAll();
+        if (wavHasSpeech(wavData)) {
+            const qint64 nowMs = m_runtimeClock.elapsed();
+            if (nowMs < m_echoSuppressUntilMs || isAssistantAudible()) {
+                appendAudit("Voice chunk ignored (assistant speaking)");
+            } else {
+                if (actionRunning() && nowMs - m_lastBargeInMs > 550) {
+                    m_lastBargeInMs = nowMs;
+                    appendAudit("Voice barge-in detected");
+                    cancelActiveRequest();
+                }
+                requestTranscription(wavData);
+            }
+        }
+    }
+
+    if (m_duplexVoiceEnabled && m_micActive) {
+        m_voiceCaptureRestartTimer.start(60);
+    }
+}
+
+bool AppController::wavHasSpeech(const QByteArray &wavData) const
+{
+    if (wavData.size() <= 44) {
+        return false;
+    }
+
+    const char *data = wavData.constData() + 44;
+    const int bytes = wavData.size() - 44;
+    if (bytes < 3200) {
+        return false;
+    }
+
+    qint64 sumAbs = 0;
+    int samples = 0;
+    for (int i = 0; i + 1 < bytes; i += 2) {
+        const qint16 sample = qFromLittleEndian<qint16>(reinterpret_cast<const uchar *>(data + i));
+        sumAbs += qAbs(sample);
+        ++samples;
+    }
+    if (samples == 0) {
+        return false;
+    }
+
+    const qint64 avg = sumAbs / samples;
+    return avg > 700;
+}
+
+void AppController::requestTranscription(const QByteArray &wavData)
+{
+    if (wavData.isEmpty()) {
+        return;
+    }
+
+    const QString url = normalizedTranscriptionUrl(m_transcriptionEndpoint.isEmpty() ? m_endpoint : m_transcriptionEndpoint);
+    if (url.isEmpty()) {
+        return;
+    }
+
+    if (m_activeTranscriptionReply) {
+        return;
+    }
+
+    QHttpMultiPart *multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+
+    QHttpPart modelPart;
+    modelPart.setHeader(QNetworkRequest::ContentDispositionHeader, QVariant("form-data; name=\"model\""));
+    modelPart.setBody(m_transcriptionModel.toUtf8());
+    multiPart->append(modelPart);
+
+    QHttpPart filePart;
+    filePart.setHeader(
+        QNetworkRequest::ContentDispositionHeader,
+        QVariant("form-data; name=\"file\"; filename=\"speech.wav\""));
+    filePart.setHeader(QNetworkRequest::ContentTypeHeader, QVariant("audio/wav"));
+    filePart.setBody(wavData);
+    multiPart->append(filePart);
+
+    QNetworkRequest request{QUrl(url)};
+    applyAuthHeader(request);
+
+    m_activeTranscriptionReply = m_network.post(request, multiPart);
+    QNetworkReply *reply = m_activeTranscriptionReply;
+    multiPart->setParent(reply);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        if (reply != m_activeTranscriptionReply) {
+            reply->deleteLater();
+            return;
+        }
+        m_activeTranscriptionReply = nullptr;
+
+        if (reply->error() != QNetworkReply::NoError) {
+            reply->deleteLater();
+            return;
+        }
+
+        QJsonParseError parseError;
+        const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll(), &parseError);
+        if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+            reply->deleteLater();
+            return;
+        }
+
+        QString text = doc.object().value("text").toString().trimmed();
+        if (text.isEmpty()) {
+            const QJsonArray choices = doc.object().value("choices").toArray();
+            if (!choices.isEmpty()) {
+                text = choices.first().toObject().value("text").toString().trimmed();
+            }
+        }
+
+        if (!text.isEmpty()) {
+            routeVoiceTranscript(text);
+        }
+        reply->deleteLater();
+    });
+}
+
+void AppController::routeVoiceTranscript(const QString &text)
+{
+    const QString transcript = text.trimmed();
+    if (transcript.isEmpty()) {
+        return;
+    }
+
+    appendAudit("Voice transcript: " + transcript);
+    QString routed = transcript;
+    bool wakeOnly = false;
+    parseWakeInput(transcript, &routed, &wakeOnly);
+    if (wakeOnly) {
+        if (!m_wakeResponses.isEmpty()) {
+            const int idx = QRandomGenerator::global()->bounded(m_wakeResponses.size());
+            postAssistant(m_wakeResponses.at(idx));
+        }
+        return;
+    }
+
+    if (routed.isEmpty()) {
+        return;
+    }
+
+    m_messageModel.addMessage("user", routed, "user");
+    setFaceState("thinking");
+    setStatusText("Thinking...");
+
+    if (routed.startsWith('/')) {
+        QTimer::singleShot(80, this, [this, routed]() { handleInput(routed); });
+        return;
+    }
+
+    if (shouldUseRemoteModel()) {
+        requestRemoteCompletion(routed);
+        return;
+    }
+
+    QTimer::singleShot(80, this, [this, routed]() { handleInput(routed); });
+}
+
+bool AppController::isAssistantAudible() const
+{
+    return m_ttsProcess.state() != QProcess::NotRunning
+        || m_ttsQueueRunning
+        || !m_ttsQueue.isEmpty();
+}
+
+QString AppController::expressionFromAssistantText(const QString &text, const QString &kind) const
+{
+    if (kind == "warning") {
+        return "warning";
+    }
+
+    const QString lowered = text.toLower();
+    if (lowered.contains("error")
+        || lowered.contains("failed")
+        || lowered.contains("cannot")
+        || lowered.contains("can't")
+        || lowered.contains("permission denied")
+        || lowered.contains("not found")) {
+        return "warning";
+    }
+
+    if (lowered.contains("i'm not sure")
+        || lowered.contains("i am not sure")
+        || lowered.contains("unclear")
+        || lowered.contains("do you mean")
+        || lowered.contains("could you clarify")) {
+        return "confused";
+    }
+
+    if (lowered.contains("done")
+        || lowered.contains("completed")
+        || lowered.contains("success")
+        || lowered.contains("great")
+        || lowered.contains("nice")
+        || lowered.contains("ready")) {
+        return "happy";
+    }
+
+    return "speaking";
+}
+
+QString AppController::normalizedTranscriptionUrl(const QString &endpoint) const
+{
+    QString raw = endpoint.trimmed();
+    if (raw.isEmpty()) {
+        return {};
+    }
+
+    if (!raw.startsWith("http://", Qt::CaseInsensitive)
+        && !raw.startsWith("https://", Qt::CaseInsensitive)) {
+        raw.prepend("http://");
+    }
+
+    QUrl url(raw);
+    if (!url.isValid()) {
+        return {};
+    }
+
+    QString path = url.path().trimmed();
+    path.remove(QRegularExpression("/+$"));
+
+    if (path.isEmpty()) {
+        path = "/v1/audio/transcriptions";
+    } else if (path.endsWith("/chat/completions")) {
+        path.chop(QString("/chat/completions").size());
+        path += "/audio/transcriptions";
+    } else if (path.endsWith("/models")) {
+        path.chop(QString("/models").size());
+        path += "/audio/transcriptions";
+    } else if (path.endsWith("/v1")) {
+        path += "/audio/transcriptions";
+    } else if (!path.endsWith("/audio/transcriptions")) {
+        path += "/audio/transcriptions";
+    }
+
+    url.setPath(path);
+    url.setQuery(QString());
+    url.setFragment(QString());
+    return url.toString();
 }
 
 QString AppController::normalizedCompletionUrl(const QString &endpoint) const
@@ -2584,6 +3074,13 @@ void AppController::loadProfile(const QString &profileName)
     const QString profilePersonality = settings.value(base + "personality", m_personality).toString();
     const QString profileGender = settings.value(base + "gender", m_gender).toString();
     const QString profileVoiceStyle = settings.value(base + "voiceStyle", m_voiceStyle).toString();
+    const bool profileDuplexVoiceEnabled = settings.value(base + "duplexVoiceEnabled", m_duplexVoiceEnabled).toBool();
+    const QString profileTranscriptionEndpoint = normalizedTranscriptionUrl(
+        settings.value(base + "transcriptionEndpoint", m_transcriptionEndpoint).toString());
+    QString profileTranscriptionModel = settings.value(base + "transcriptionModel", m_transcriptionModel).toString().trimmed();
+    if (profileTranscriptionModel.isEmpty()) {
+        profileTranscriptionModel = m_transcriptionModel;
+    }
 
     if (providers().contains(profileProvider) && m_provider != profileProvider) {
         m_provider = profileProvider;
@@ -2664,6 +3161,21 @@ void AppController::loadProfile(const QString &profileName)
         m_voiceStyle = profileVoiceStyle;
         emit voiceStyleChanged();
     }
+
+    if (m_duplexVoiceEnabled != profileDuplexVoiceEnabled) {
+        m_duplexVoiceEnabled = profileDuplexVoiceEnabled;
+        emit duplexVoiceEnabledChanged();
+    }
+
+    if (m_transcriptionEndpoint != profileTranscriptionEndpoint) {
+        m_transcriptionEndpoint = profileTranscriptionEndpoint;
+        emit transcriptionEndpointChanged();
+    }
+
+    if (!profileTranscriptionModel.isEmpty() && m_transcriptionModel != profileTranscriptionModel) {
+        m_transcriptionModel = profileTranscriptionModel;
+        emit transcriptionModelChanged();
+    }
 }
 
 void AppController::saveProfileToSettings(const QString &profileName) const
@@ -2689,6 +3201,9 @@ void AppController::saveProfileToSettings(const QString &profileName) const
     settings.setValue(base + "personality", m_personality);
     settings.setValue(base + "gender", m_gender);
     settings.setValue(base + "voiceStyle", m_voiceStyle);
+    settings.setValue(base + "duplexVoiceEnabled", m_duplexVoiceEnabled);
+    settings.setValue(base + "transcriptionEndpoint", m_transcriptionEndpoint);
+    settings.setValue(base + "transcriptionModel", m_transcriptionModel);
 }
 
 int AppController::chunkSizeForBacklog(int backlog) const

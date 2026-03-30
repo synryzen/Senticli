@@ -6,6 +6,7 @@ import Senticli
 Rectangle {
     id: root
     property bool actionRunning: false
+    property bool micActive: false
     property string promptText: "user@senticli:~$"
     property var commandHistory: []
     property int historyIndex: 0
@@ -82,7 +83,8 @@ Rectangle {
         }
 
         Button {
-            text: "mic"
+            text: root.micActive ? "mic:on" : "mic"
+            highlighted: root.micActive
             onClicked: root.micToggled()
             font.family: Typography.uiFamily
             font.pixelSize: Typography.smallSize

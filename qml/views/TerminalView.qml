@@ -7,6 +7,7 @@ Rectangle {
     id: root
     required property var messageModel
     property bool actionRunning: false
+    property bool micActive: false
     property bool pendingApproval: false
     property string pendingApprovalText: ""
 
@@ -134,6 +135,7 @@ Rectangle {
         InputBar {
             Layout.fillWidth: true
             actionRunning: root.actionRunning
+            micActive: root.micActive
             promptText: "matthew@senticli:~$"
             onSubmitted: function(text) {
                 root.inputSubmitted(text)
