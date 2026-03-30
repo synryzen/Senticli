@@ -7,6 +7,8 @@ Rectangle {
     id: root
     property bool actionRunning: false
     property string promptText: "user@senticli:~$"
+    property var commandHistory: []
+    property int historyIndex: 0
     signal submitted(string text)
     signal micToggled()
     signal cancelRequested()
@@ -22,6 +24,10 @@ Rectangle {
         if (value.length === 0) {
             return
         }
+        if (root.commandHistory.length === 0 || root.commandHistory[root.commandHistory.length - 1] !== value) {
+            root.commandHistory.push(value)
+        }
+        root.historyIndex = root.commandHistory.length
         root.submitted(value)
         input.clear()
     }
@@ -48,6 +54,29 @@ Rectangle {
             background: Rectangle {
                 color: "transparent"
                 border.width: 0
+            }
+            Keys.onPressed: function(event) {
+                if (event.key === Qt.Key_Up) {
+                    if (root.commandHistory.length === 0) {
+                        return
+                    }
+                    root.historyIndex = Math.max(0, root.historyIndex - 1)
+                    input.text = root.commandHistory[root.historyIndex]
+                    input.cursorPosition = input.text.length
+                    event.accepted = true
+                } else if (event.key === Qt.Key_Down) {
+                    if (root.commandHistory.length === 0) {
+                        return
+                    }
+                    root.historyIndex = Math.min(root.commandHistory.length, root.historyIndex + 1)
+                    if (root.historyIndex === root.commandHistory.length) {
+                        input.clear()
+                    } else {
+                        input.text = root.commandHistory[root.historyIndex]
+                        input.cursorPosition = input.text.length
+                    }
+                    event.accepted = true
+                }
             }
             onAccepted: root.submitText()
         }

@@ -11,6 +11,7 @@
 #include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QProcessEnvironment>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QUrl>
@@ -1207,7 +1208,20 @@ void AppController::startShellCommand(const QString &command)
     m_shellOutputRow = m_messageModel.addMessageWithRow("system", QString("$ %1\n").arg(command), "system");
     appendAudit("Shell start: " + command);
 
-    m_shellProcess.start("/bin/bash", {"-lc", command});
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    if (!env.contains("TERM")) {
+        env.insert("TERM", "xterm-256color");
+    }
+    env.insert("CLICOLOR_FORCE", "1");
+    env.insert("FORCE_COLOR", "1");
+    m_shellProcess.setProcessEnvironment(env);
+
+    const QString scriptBin = QStandardPaths::findExecutable("script");
+    if (!scriptBin.isEmpty()) {
+        m_shellProcess.start(scriptBin, {"-qefc", command, "/dev/null"});
+    } else {
+        m_shellProcess.start("/bin/bash", {"-lc", command});
+    }
     if (!m_shellProcess.waitForStarted(1200)) {
         m_messageModel.appendTextAt(m_shellOutputRow, "Failed to start shell command.");
         appendAudit("Shell failed to start");
@@ -1245,10 +1259,12 @@ void AppController::handleShellOutput()
 
     const QString out = QString::fromLocal8Bit(m_shellProcess.readAllStandardOutput());
     const QString err = QString::fromLocal8Bit(m_shellProcess.readAllStandardError());
-    const QString merged = out + err;
 
-    if (!merged.isEmpty()) {
-        m_messageModel.appendTextAt(m_shellOutputRow, merged);
+    if (!out.isEmpty()) {
+        m_messageModel.appendTextAt(m_shellOutputRow, out);
+    }
+    if (!err.isEmpty()) {
+        m_messageModel.appendTextAt(m_shellOutputRow, "\u001b[31m" + err + "\u001b[0m");
     }
 }
 
