@@ -59,6 +59,7 @@ class AppController : public QObject
     Q_PROPERTY(QString modelName READ modelName NOTIFY modelNameChanged)
     Q_PROPERTY(QString folderScope READ folderScope NOTIFY folderScopeChanged)
     Q_PROPERTY(bool micActive READ micActive NOTIFY micActiveChanged)
+    Q_PROPERTY(qreal voiceInputLevel READ voiceInputLevel NOTIFY voiceInputLevelChanged)
     Q_PROPERTY(bool speakingActive READ speakingActive NOTIFY speakingActiveChanged)
     Q_PROPERTY(bool streamingActive READ streamingActive NOTIFY streamingActiveChanged)
     Q_PROPERTY(bool commandRunning READ commandRunning NOTIFY commandRunningChanged)
@@ -110,6 +111,7 @@ public:
     QString modelName() const;
     QString folderScope() const;
     bool micActive() const;
+    qreal voiceInputLevel() const;
     bool speakingActive() const;
     bool streamingActive() const;
     bool commandRunning() const;
@@ -188,6 +190,7 @@ signals:
     void modelNameChanged();
     void folderScopeChanged();
     void micActiveChanged();
+    void voiceInputLevelChanged();
     void speakingActiveChanged();
     void streamingActiveChanged();
     void commandRunningChanged();
@@ -198,6 +201,7 @@ private:
     void setFaceState(const QString &state);
     void setStatusText(const QString &text);
     void setModelStatus(const QString &text);
+    void setVoiceInputLevel(qreal level);
     void setStreamingActive(bool active);
     void updateStreamingMessageDisplay(bool showCursor);
     void queueStreamText(const QString &text);
@@ -221,7 +225,7 @@ private:
     void stopVoiceCaptureLoop();
     void runVoiceCaptureChunk();
     void handleVoiceCaptureFinished(int exitCode, QProcess::ExitStatus exitStatus);
-    bool wavHasSpeech(const QByteArray &wavData) const;
+    bool wavHasSpeech(const QByteArray &wavData, qreal *normalizedLevel = nullptr) const;
     void requestTranscription(const QByteArray &wavData);
     void routeVoiceTranscript(const QString &text);
     void dispatchVoiceTranscript(const QString &transcript);
@@ -307,6 +311,7 @@ private:
     QStringList m_auditEntries;
     QString m_folderScope = "~/Documents, ~/Projects";
     bool m_micActive = false;
+    qreal m_voiceInputLevel = 0.0;
     bool m_speakingActive = false;
     bool m_streamingActive = false;
     bool m_commandRunning = false;

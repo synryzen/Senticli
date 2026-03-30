@@ -30,6 +30,7 @@ This repository currently contains a working prototype scaffold in C++ + Qt 6 + 
 - Tunable duplex controls: VAD sensitivity + smoothness preset (Responsive/Balanced/Natural/Studio)
 - One-click duplex quick-tune presets in AI Settings (Fast/Balanced/Human/Studio)
 - Voice-utterance buffering combines partial STT fragments before dispatch for smoother turn-taking
+- Live listening meter on the face panel while mic is active
 - Dedicated AI Settings panel with:
   - saved connection profiles (save/load/delete presets)
   - provider + endpoint controls

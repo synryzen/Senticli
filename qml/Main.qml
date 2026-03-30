@@ -21,6 +21,7 @@ ApplicationWindow {
             faceState: backend.faceState
             statusText: backend.statusText
             micActive: backend.micActive
+            voiceInputLevel: backend.voiceInputLevel
             speakingActive: backend.speakingActive
         }
 

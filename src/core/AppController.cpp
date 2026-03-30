@@ -349,6 +349,11 @@ bool AppController::micActive() const
     return m_micActive;
 }
 
+qreal AppController::voiceInputLevel() const
+{
+    return m_voiceInputLevel;
+}
+
 bool AppController::speakingActive() const
 {
     return m_speakingActive;
@@ -439,6 +444,7 @@ void AppController::toggleMic()
     emit micActiveChanged();
 
     if (m_micActive) {
+        setVoiceInputLevel(0.0);
         setFaceState("listening");
         setStatusText(m_duplexVoiceEnabled ? "Duplex listening..." : "Listening (STT integration pending)...");
         if (m_duplexVoiceEnabled) {
@@ -450,6 +456,7 @@ void AppController::toggleMic()
         setStatusText("Waiting for approval");
     } else {
         stopVoiceCaptureLoop();
+        setVoiceInputLevel(0.0);
         setFaceState("idle");
         setStatusText("Ready");
     }
@@ -1320,6 +1327,16 @@ void AppController::setModelStatus(const QString &text)
     }
     m_modelStatus = text;
     emit modelStatusChanged();
+}
+
+void AppController::setVoiceInputLevel(qreal level)
+{
+    const qreal clamped = qBound<qreal>(0.0, level, 1.0);
+    if (qAbs(m_voiceInputLevel - clamped) < 0.01) {
+        return;
+    }
+    m_voiceInputLevel = clamped;
+    emit voiceInputLevelChanged();
 }
 
 void AppController::setStreamingActive(bool active)
@@ -2764,6 +2781,7 @@ void AppController::stopVoiceCaptureLoop()
         m_voiceCaptureProcess.waitForFinished(250);
     }
     m_voiceCaptureRunning = false;
+    setVoiceInputLevel(0.0);
 }
 
 void AppController::runVoiceCaptureChunk()
@@ -2810,7 +2828,11 @@ void AppController::handleVoiceCaptureFinished(int exitCode, QProcess::ExitStatu
     QFile file(m_voiceCaptureTempPath);
     if (file.open(QIODevice::ReadOnly)) {
         const QByteArray wavData = file.readAll();
-        if (wavHasSpeech(wavData)) {
+        qreal voiceLevel = 0.0;
+        const bool speechDetected = wavHasSpeech(wavData, &voiceLevel);
+        // Decay slightly so the meter stays readable between capture chunks.
+        setVoiceInputLevel(qMax(voiceLevel, m_voiceInputLevel * 0.45));
+        if (speechDetected) {
             const qint64 nowMs = m_runtimeClock.elapsed();
             if (nowMs < m_echoSuppressUntilMs || isAssistantAudible()) {
                 appendAudit("Voice chunk ignored (assistant speaking)");
@@ -2830,15 +2852,21 @@ void AppController::handleVoiceCaptureFinished(int exitCode, QProcess::ExitStatu
     }
 }
 
-bool AppController::wavHasSpeech(const QByteArray &wavData) const
+bool AppController::wavHasSpeech(const QByteArray &wavData, qreal *normalizedLevel) const
 {
     if (wavData.size() <= 44) {
+        if (normalizedLevel) {
+            *normalizedLevel = 0.0;
+        }
         return false;
     }
 
     const char *data = wavData.constData() + 44;
     const int bytes = wavData.size() - 44;
     if (bytes < 3200) {
+        if (normalizedLevel) {
+            *normalizedLevel = 0.0;
+        }
         return false;
     }
 
@@ -2850,10 +2878,17 @@ bool AppController::wavHasSpeech(const QByteArray &wavData) const
         ++samples;
     }
     if (samples == 0) {
+        if (normalizedLevel) {
+            *normalizedLevel = 0.0;
+        }
         return false;
     }
 
     const qint64 avg = sumAbs / samples;
+    if (normalizedLevel) {
+        const qreal normalized = qBound<qreal>(0.0, static_cast<qreal>(avg) / 2600.0, 1.0);
+        *normalizedLevel = normalized;
+    }
     return avg > vadAmplitudeThreshold();
 }
 

@@ -7,6 +7,7 @@ Item {
     property string faceState: "idle"
     property string statusText: "Ready"
     property bool micActive: false
+    property real voiceInputLevel: 0.0
     property bool speakingActive: false
 
     property real blinkFactor: 1.0
@@ -172,6 +173,36 @@ Item {
         color: Colors.textSecondary
         font.family: Typography.uiFamily
         font.pixelSize: Typography.bodySize
+    }
+
+    Rectangle {
+        id: listenMeter
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: facePlate.bottom
+        anchors.topMargin: 40
+        width: 240
+        height: 10
+        radius: 5
+        color: "#111922"
+        border.width: 1
+        border.color: "#2A3945"
+        opacity: root.micActive ? 0.95 : 0.0
+        visible: opacity > 0.01
+
+        Behavior on opacity { NumberAnimation { duration: 150 } }
+
+        Rectangle {
+            width: Math.max(4, parent.width * root.voiceInputLevel)
+            height: parent.height - 2
+            anchors.left: parent.left
+            anchors.leftMargin: 1
+            anchors.verticalCenter: parent.verticalCenter
+            radius: 4
+            color: root.voiceInputLevel > 0.62 ? Colors.warning : Colors.info
+            opacity: 0.92
+            Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+            Behavior on color { ColorAnimation { duration: 120 } }
+        }
     }
 
     Timer {
