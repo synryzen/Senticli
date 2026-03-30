@@ -36,6 +36,19 @@ Item {
     property bool isSad: root.effectiveState === "sad"
     property bool isAngry: root.effectiveState === "angry"
     property bool isSleeping: root.effectiveState === "sleeping"
+    readonly property bool expressionActive: root.isListening || root.isSpeaking || root.isThinking
+                                            || root.isHappy || root.isConfused || root.isSad
+                                            || root.isAngry || root.isWarning
+    readonly property bool showKissEmote: !root.isSpeaking && root.isListening && root.voiceInputLevel > 0.56
+    readonly property string mouthEmote: {
+        if (root.showKissEmote) return "kiss"
+        if (root.isHappy) return "smileBig"
+        if (root.isSad) return "frown"
+        if (root.isConfused) return "wavy"
+        if (root.isAngry || root.isWarning) return "grimace"
+        return "none"
+    }
+    readonly property bool showMouthEmote: root.mouthEmote !== "none"
     property color expressionAccent: {
         if (root.isAngry || root.isWarning) return Colors.warning
         if (root.isSad) return "#7AA7FF"
@@ -89,9 +102,9 @@ Item {
 
         SequentialAnimation on scale {
             loops: Animation.Infinite
-            running: true
-            NumberAnimation { from: 0.97; to: 1.035; duration: root.isSpeaking ? 520 : 880; easing.type: Easing.InOutQuad }
-            NumberAnimation { from: 1.035; to: 0.97; duration: root.isSpeaking ? 520 : 880; easing.type: Easing.InOutQuad }
+            running: root.expressionActive && !root.isSleeping
+            NumberAnimation { from: 0.985; to: 1.024; duration: root.isSpeaking ? 640 : (root.isListening ? 820 : 1220); easing.type: Easing.InOutQuad }
+            NumberAnimation { from: 1.024; to: 0.985; duration: root.isSpeaking ? 640 : (root.isListening ? 820 : 1220); easing.type: Easing.InOutQuad }
         }
     }
 
@@ -254,12 +267,104 @@ Item {
                 }
             }
 
-            Mouth {
+            Item {
+                id: emoteLayer
+                width: 192
+                height: 64
                 anchors.horizontalCenter: parent.horizontalCenter
-                stateName: root.effectiveState
-                styleName: root.faceStyle
-                beatMs: root.mouthBeatMs
-                speaking: root.isSpeaking
+                visible: root.showMouthEmote
+                opacity: root.showMouthEmote ? 1.0 : 0.0
+
+                Behavior on opacity { NumberAnimation { duration: 110 } }
+
+                Item {
+                    anchors.centerIn: parent
+                    width: 170
+                    height: 58
+                    clip: true
+                    visible: root.mouthEmote === "smileBig"
+
+                    Rectangle {
+                        width: 170
+                        height: 170
+                        radius: 85
+                        x: 0
+                        y: -132
+                        color: "transparent"
+                        border.width: 6
+                        border.color: "#6BEAB5"
+                    }
+                }
+
+                Item {
+                    anchors.centerIn: parent
+                    width: 120
+                    height: 52
+                    visible: root.mouthEmote === "kiss"
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 34 + (root.voiceInputLevel * 24)
+                        height: 28 + (root.voiceInputLevel * 12)
+                        radius: width / 2
+                        color: "transparent"
+                        border.width: 4
+                        border.color: "#FFC6DE"
+                        scale: 0.95 + (root.listenPulse * 0.05)
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.horizontalCenter
+                        anchors.leftMargin: 24
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 10
+                        height: 10
+                        radius: 5
+                        color: "#FFC6DE"
+                        opacity: 0.85
+                    }
+                }
+
+                Item {
+                    anchors.centerIn: parent
+                    width: 160
+                    height: 52
+                    clip: true
+                    visible: root.mouthEmote === "frown"
+
+                    Rectangle {
+                        width: 160
+                        height: 160
+                        radius: 80
+                        x: 0
+                        y: 96
+                        color: "transparent"
+                        border.width: 4
+                        border.color: "#7AA7FF"
+                    }
+                }
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 126 + (root.moodSwing * 4)
+                    height: 12
+                    radius: 6
+                    color: root.isAngry ? "#FF7A56" : Colors.warning
+                    opacity: 0.92
+                    rotation: root.isAngry ? (2 + root.shakeOffset) : 0
+                    visible: root.mouthEmote === "grimace"
+                    Behavior on width { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: root.mouthEmote === "wavy"
+                    text: "~  ~"
+                    color: Colors.warning
+                    font.family: Typography.monoFamily
+                    font.pixelSize: 28
+                    font.bold: true
+                }
             }
         }
 
@@ -365,29 +470,29 @@ Item {
 
     Timer {
         id: blinkTimer
-        interval: 2200
+        interval: 2500
         running: true
         repeat: true
         onTriggered: {
             blink.restart()
-            blinkTimer.interval = 1500 + Math.random() * 1800
+            blinkTimer.interval = 1800 + Math.random() * 2000
         }
     }
 
     Timer {
         id: lookTimer
-        interval: root.isListening ? 900 : 1500
+        interval: root.isListening ? 1150 : (root.isThinking ? 980 : 1800)
         running: true
         repeat: true
         onTriggered: {
             if (root.isThinking) {
-                root.driftX = (Math.random() * 0.32) - 0.16
-                root.driftY = -0.2 + Math.random() * 0.1
+                root.driftX = (Math.random() * 0.26) - 0.13
+                root.driftY = -0.18 + Math.random() * 0.08
                 return
             }
             if (root.isListening) {
-                root.driftX = (Math.random() * 0.7) - 0.35
-                root.driftY = (Math.random() * 0.24) - 0.12
+                root.driftX = (Math.random() * 0.48) - 0.24
+                root.driftY = (Math.random() * 0.16) - 0.08
                 return
             }
             if (root.isWarning || root.isAngry) {
@@ -395,8 +500,8 @@ Item {
                 root.driftY = 0.03
                 return
             }
-            root.driftX = (Math.random() * 0.9) - 0.45
-            root.driftY = (Math.random() * 0.24) - 0.12
+            root.driftX = (Math.random() * 0.7) - 0.35
+            root.driftY = (Math.random() * 0.14) - 0.07
         }
     }
 
@@ -423,23 +528,23 @@ Item {
 
     SequentialAnimation on moodSwing {
         loops: Animation.Infinite
-        running: true
-        NumberAnimation { from: -1.0; to: 1.0; duration: root.isSpeaking ? 620 : 1200; easing.type: Easing.InOutSine }
-        NumberAnimation { from: 1.0; to: -1.0; duration: root.isSpeaking ? 620 : 1200; easing.type: Easing.InOutSine }
+        running: root.expressionActive && !root.isSleeping
+        NumberAnimation { from: -1.0; to: 1.0; duration: root.isSpeaking ? 820 : 1700; easing.type: Easing.InOutSine }
+        NumberAnimation { from: 1.0; to: -1.0; duration: root.isSpeaking ? 820 : 1700; easing.type: Easing.InOutSine }
     }
 
     SequentialAnimation on idleBob {
         loops: Animation.Infinite
-        running: !root.isSpeaking
-        NumberAnimation { from: -1.0; to: 1.3; duration: 1500; easing.type: Easing.InOutSine }
-        NumberAnimation { from: 1.3; to: -1.0; duration: 1500; easing.type: Easing.InOutSine }
+        running: !root.isSpeaking && !root.isSleeping
+        NumberAnimation { from: -1.0; to: 1.2; duration: 2100; easing.type: Easing.InOutSine }
+        NumberAnimation { from: 1.2; to: -1.0; duration: 2100; easing.type: Easing.InOutSine }
     }
 
     SequentialAnimation on talkBeat {
         loops: Animation.Infinite
         running: root.isSpeaking
-        NumberAnimation { from: -1.0; to: 1.0; duration: Math.max(70, Math.round(root.mouthBeatMs * 0.45)); easing.type: Easing.InOutSine }
-        NumberAnimation { from: 1.0; to: -1.0; duration: Math.max(70, Math.round(root.mouthBeatMs * 0.45)); easing.type: Easing.InOutSine }
+        NumberAnimation { from: -1.0; to: 1.0; duration: Math.max(140, Math.round(root.mouthBeatMs * 0.75)); easing.type: Easing.InOutSine }
+        NumberAnimation { from: 1.0; to: -1.0; duration: Math.max(140, Math.round(root.mouthBeatMs * 0.75)); easing.type: Easing.InOutSine }
     }
 
     SequentialAnimation on listenPulse {
